@@ -211,8 +211,9 @@ jobs:
           - macOS Apple Silicon and Intel tar.xz archives (OBS.app)
 
           This fork adds several Replay Buffer durations with one hotkey each,
-          an optional Replay Buffer dock, accurate short-clip durations, and
-          keyframe-aligned saving without re-encoding.
+          an optional Replay Buffer dock, selectable RAM or disk-backed
+          buffering, accurate short-clip durations, and keyframe-aligned saving
+          without re-encoding.
 
           See the repository README for setup, platform notes, and limitations.
           EOF
