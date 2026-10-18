@@ -13,9 +13,10 @@ target_link_libraries(test_replay_buffer_disk PRIVATE OBS::libobs)
 set_target_properties(test_replay_buffer_disk PROPERTIES FOLDER "Tests and Examples")
 add_test(NAME test_replay_buffer_disk COMMAND test_replay_buffer_disk)
 if(WIN32)
+  get_filename_component(_replay_ffmpeg_dir "${FFmpeg_avcodec_LIBRARY}" DIRECTORY)
   set(
     _replay_test_path
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:libobs>;PATH=path_list_prepend:${OBS_OUTPUT_DIR}/$<CONFIG>/bin/64bit"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:libobs>;PATH=path_list_prepend:${OBS_OUTPUT_DIR}/$<CONFIG>/bin/64bit;PATH=path_list_prepend:${_replay_ffmpeg_dir}"
   )
 else()
   set(_replay_test_path "PATH=path_list_prepend:$<TARGET_FILE_DIR:libobs>")
