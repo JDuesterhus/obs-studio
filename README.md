@@ -212,10 +212,10 @@ This fork follows the upstream OBS version it is based on and adds its own
 suffix. For example:
 
 ```text
-33.0.0-rc2-multi.2
+33.0.0-rc2-multi.4
 ```
 
-means "fork build 2 based on upstream OBS 33.0.0-rc2". It is **not** an
+means "fork build 4 based on upstream OBS 33.0.0-rc2". It is **not** an
 official OBS 33.1.0 release. The Windows file version shows the numeric base
 (`33.0.0`), while the release/tag and About window show the full fork version.
 
@@ -330,6 +330,7 @@ compiled:
 | Legacy profile with no extra durations configured | Passed |
 | Two saves with the same generated filename | Passed: distinct files, no overwrite |
 | Mux-helper failure (helper removed) | Passed: warning shown, no partial file left |
+| Temporary `.part` save then rename | Passed (RAM and disk; failed save left no clip or `.part`) |
 | Replay Buffer dock hidden by default | Passed (not present until View > Docks) |
 | Dock duration and full-buffer buttons | Passed (real clips saved) |
 | German dock and settings terminology | Passed (Replaypuffer, no Wiedergabepuffer) |
@@ -337,7 +338,8 @@ compiled:
 | Disk mode: 10 s and 30 s hotkeys plus full save | Passed (keyframe-aligned clips) |
 | Disk mode: multi-segment save | Passed (10 s request from a 45 s buffer) |
 | Disk mode: retention after >2x buffer length | Passed (30 s window saved ~33 s) |
-| Disk mode: bounded memory over 2 minutes | Passed (419.5 MB -> 420.5 MB working set) |
+| Disk mode: bounded memory over 5 minutes | Passed (420.7 MB -> 422.0 MB working set) |
+| Disk mode: 120 s request from a 5-minute buffer | Passed (122.4 s clip) |
 | Disk mode: temporary files removed on stop | Passed |
 | Disk mode: stale crash folder cleanup | Passed (segment/lock removed, unrelated file kept) |
 | Disk mode: unwritable/invalid buffer folder | Passed (clear start error, no crash) |
