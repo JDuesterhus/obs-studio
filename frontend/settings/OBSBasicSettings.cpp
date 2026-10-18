@@ -376,13 +376,15 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 		AdvReplayBufferChanged();
 	});
 	connect(simpleRBStorage, &ReplayBufferStorageWidget::Changed, this, [this]() {
-		if (!loading)
+		if (!loading) {
 			outputsChanged = true;
+		}
 		SimpleReplayBufferChanged();
 	});
 	connect(advRBStorage, &ReplayBufferStorageWidget::Changed, this, [this]() {
-		if (!loading)
+		if (!loading) {
 			outputsChanged = true;
+		}
 		AdvReplayBufferChanged();
 	});
 
@@ -1883,8 +1885,9 @@ void OBSBasicSettings::LoadSimpleOutputSettings()
 	const QString simpleDiskDirectory = (simpleDiskPath && *simpleDiskPath)
 						    ? QString::fromUtf8(simpleDiskPath)
 						    : QString::fromUtf8(simpleRecordingPath ? simpleRecordingPath : "");
-	if (!simpleDiskDirectory.isEmpty())
+	if (!simpleDiskDirectory.isEmpty()) {
 		simpleRBStorage->SetDirectory(simpleDiskDirectory);
+	}
 
 	SimpleStreamingEncoderChanged();
 }
@@ -2700,10 +2703,11 @@ void OBSBasicSettings::LoadAdvancedSettings()
 	const char *advRecordingPath = config_get_string(main->Config(), "AdvOut", "RecFilePath");
 	advRBStorage->SetDiskMode(config_get_bool(main->Config(), "AdvOut", "RecRBDiskMode"));
 	const QString advDiskDirectory = (advDiskPath && *advDiskPath)
-						  ? QString::fromUtf8(advDiskPath)
-						  : QString::fromUtf8(advRecordingPath ? advRecordingPath : "");
-	if (!advDiskDirectory.isEmpty())
+						 ? QString::fromUtf8(advDiskPath)
+						 : QString::fromUtf8(advRecordingPath ? advRecordingPath : "");
+	if (!advDiskDirectory.isEmpty()) {
 		advRBStorage->SetDirectory(advDiskDirectory);
+	}
 
 	ui->reconnectEnable->setChecked(reconnect);
 	ui->reconnectRetryDelay->setValue(retryDelay);
@@ -3682,8 +3686,7 @@ void OBSBasicSettings::SaveOutputSettings()
 	config_set_string(main->Config(), "SimpleOutput", "RecRBExtraDurations", QT_TO_UTF8(simpleDurations));
 	config_set_string(main->Config(), "AdvOut", "RecRBExtraDurations", QT_TO_UTF8(advDurations));
 	config_set_bool(main->Config(), "SimpleOutput", "RecRBDiskMode", simpleRBStorage->DiskMode());
-	config_set_string(main->Config(), "SimpleOutput", "RecRBDiskPath",
-			  QT_TO_UTF8(simpleRBStorage->Directory()));
+	config_set_string(main->Config(), "SimpleOutput", "RecRBDiskPath", QT_TO_UTF8(simpleRBStorage->Directory()));
 	config_set_bool(main->Config(), "AdvOut", "RecRBDiskMode", advRBStorage->DiskMode());
 	config_set_string(main->Config(), "AdvOut", "RecRBDiskPath", QT_TO_UTF8(advRBStorage->Directory()));
 

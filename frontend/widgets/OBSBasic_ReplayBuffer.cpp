@@ -84,8 +84,9 @@ std::vector<int> OBSBasic::GetReplayBufferDurations() const
 
 void OBSBasic::CreateReplayBufferDock()
 {
-	if (replayBufferDock)
+	if (replayBufferDock) {
 		return;
+	}
 
 	auto *dock = new OBSDock(this);
 	dock->setObjectName(QStringLiteral("replayBufferDock"));
@@ -105,8 +106,9 @@ void OBSBasic::CreateReplayBufferDock()
 
 void OBSBasic::RefreshReplayBufferDock()
 {
-	if (replayBufferDockWidget)
+	if (replayBufferDockWidget) {
 		replayBufferDockWidget->RefreshDurations();
+	}
 }
 
 void OBSBasic::CreateReplayBufferDurationHotkeys()
