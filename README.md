@@ -292,15 +292,16 @@ unit tests:
 
 ```powershell
 cmake -S . -B build_x64 -G "Visual Studio 17 2022" -A x64 -DENABLE_REPLAY_BUFFER_TESTS=ON
-cmake --build build_x64 --config RelWithDebInfo --target test_replay_buffer_window test_replay_buffer_disk test_replay_buffer_disk_nospace test_replay_buffer_disk_slow
+cmake --build build_x64 --config RelWithDebInfo --target test_replay_buffer_window test_replay_buffer_disk test_replay_buffer_disk_nospace test_replay_buffer_disk_slow test_replay_buffer_disk_full
 ctest --test-dir build_x64 -C RelWithDebInfo -R test_replay_buffer --output-on-failure
 ```
 
 `test_replay_buffer_disk` exercises the segment writer, partial/full clip
 selection, retention pruning, multiple saves, keyframe-less failure, and
-temporary-folder cleanup. Two small variants compile the same code with a
-deliberately tiny free-space reserve and a tiny write queue to test the
-"disk full" and "storage too slow" guards.
+temporary-folder cleanup. Small variants compile the same code with a
+deliberately tiny free-space reserve, a tiny write queue, and an injected
+runtime free-space value to test the "disk full at start", "storage too slow",
+and "disk becomes full while writing" guards.
 
 The GitHub Actions workflow runs these tests and builds the Windows, Linux, and
 macOS packages.
@@ -344,6 +345,7 @@ compiled:
 | Disk mode: stale crash folder cleanup | Passed (segment/lock removed, unrelated file kept) |
 | Disk mode: unwritable/invalid buffer folder | Passed (clear start error, no crash) |
 | Disk mode: low free space at start | Passed (unit test with injected threshold) |
+| Disk mode: disk becomes full while writing | Passed (unit test with injected free space) |
 | Disk mode: write-queue overload guard | Passed (unit test) |
 | Disk mode: MP4 + H.264 + AAC | Passed |
 | Disk mode: MKV + H.264 + AAC | Passed |

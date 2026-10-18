@@ -40,7 +40,9 @@
 #ifndef REPLAY_DISK_MIN_FREE_SPACE
 #define REPLAY_DISK_MIN_FREE_SPACE (512 * 1024 * 1024)
 #endif
+#ifndef REPLAY_DISK_SPACE_CHECK_BYTES
 #define REPLAY_DISK_SPACE_CHECK_BYTES (32 * 1024 * 1024)
+#endif
 #define REPLAY_DISK_MAX_PACKET_BYTES (64 * 1024 * 1024)
 #define REPLAY_DISK_STALE_SECONDS (24 * 60 * 60)
 
@@ -130,6 +132,9 @@ struct replay_disk {
 	int64_t total_bytes;
 	int64_t newest_dts_usec;
 	int64_t bytes_since_space_check;
+#ifdef REPLAY_DISK_TEST_HOOKS
+	int64_t test_free_space;
+#endif
 	struct replay_disk_save *pending_save;
 };
 
@@ -529,6 +534,10 @@ static bool write_record(struct replay_disk *disk, struct encoder_packet *packet
 
 	if (disk->bytes_since_space_check >= REPLAY_DISK_SPACE_CHECK_BYTES) {
 		int64_t free_space = os_get_free_space(disk->session_dir.array);
+#ifdef REPLAY_DISK_TEST_HOOKS
+		if (disk->test_free_space >= 0)
+			free_space = disk->test_free_space;
+#endif
 		disk->bytes_since_space_check = 0;
 
 		if (free_space >= 0 && free_space < REPLAY_DISK_MIN_FREE_SPACE) {
@@ -748,6 +757,9 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 	pthread_cond_init(&disk->cond, NULL);
 	disk->max_time_usec = max_time_usec;
 	disk->next_seq = 0;
+#ifdef REPLAY_DISK_TEST_HOOKS
+	disk->test_free_space = -1;
+#endif
 
 	/*
 	 * Keep individual segments short enough that pruning can follow the
@@ -1101,6 +1113,15 @@ void replay_disk_save_free(struct replay_disk_save *save)
 	da_free(save->segments);
 	bfree(save);
 }
+
+#ifdef REPLAY_DISK_TEST_HOOKS
+void replay_disk_test_set_free_space(struct replay_disk *disk, int64_t free_space)
+{
+	pthread_mutex_lock(&disk->mutex);
+	disk->test_free_space = free_space;
+	pthread_mutex_unlock(&disk->mutex);
+}
+#endif
 
 enum replay_disk_error replay_disk_get_error(struct replay_disk *disk, const char **detail)
 {

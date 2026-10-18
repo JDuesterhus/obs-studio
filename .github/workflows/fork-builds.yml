@@ -37,7 +37,7 @@ jobs:
       - name: Build and run tests
         shell: pwsh
         run: |
-          cmake --build --preset windows-x64 --config RelWithDebInfo --target test_replay_buffer_window test_replay_buffer_disk test_replay_buffer_disk_nospace test_replay_buffer_disk_slow
+          cmake --build --preset windows-x64 --config RelWithDebInfo --target test_replay_buffer_window test_replay_buffer_disk test_replay_buffer_disk_nospace test_replay_buffer_disk_slow test_replay_buffer_disk_full
           ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --timeout 60 -V -R test_replay_buffer
 
   windows:

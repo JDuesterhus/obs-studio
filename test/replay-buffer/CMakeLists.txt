@@ -46,3 +46,15 @@ target_link_libraries(test_replay_buffer_disk_slow PRIVATE OBS::libobs)
 set_target_properties(test_replay_buffer_disk_slow PROPERTIES FOLDER "Tests and Examples")
 add_test(NAME test_replay_buffer_disk_slow COMMAND test_replay_buffer_disk_slow)
 set_tests_properties(test_replay_buffer_disk_slow PROPERTIES ENVIRONMENT_MODIFICATION "${_replay_test_path}")
+
+add_executable(
+  test_replay_buffer_disk_full
+  test_replay_buffer_disk_full.c
+  "${CMAKE_SOURCE_DIR}/plugins/obs-ffmpeg/replay-buffer-disk.c"
+)
+target_include_directories(test_replay_buffer_disk_full PRIVATE "${CMAKE_SOURCE_DIR}/plugins/obs-ffmpeg")
+target_compile_definitions(test_replay_buffer_disk_full PRIVATE REPLAY_DISK_TEST_HOOKS REPLAY_DISK_SPACE_CHECK_BYTES=1)
+target_link_libraries(test_replay_buffer_disk_full PRIVATE OBS::libobs)
+set_target_properties(test_replay_buffer_disk_full PROPERTIES FOLDER "Tests and Examples")
+add_test(NAME test_replay_buffer_disk_full COMMAND test_replay_buffer_disk_full)
+set_tests_properties(test_replay_buffer_disk_full PROPERTIES ENVIRONMENT_MODIFICATION "${_replay_test_path}")

@@ -90,3 +90,8 @@ enum replay_disk_error replay_disk_save_error(const struct replay_disk_save *sav
 
 /* Duration of the snapshot in microseconds (available after a successful wait). */
 int64_t replay_disk_save_duration(const struct replay_disk_save *save);
+
+#ifdef REPLAY_DISK_TEST_HOOKS
+/* Test-only override for the runtime free-space check. */
+void replay_disk_test_set_free_space(struct replay_disk *disk, int64_t free_space);
+#endif
