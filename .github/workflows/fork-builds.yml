@@ -217,11 +217,12 @@ jobs:
           See the repository README for setup, platform notes, and limitations.
           EOF
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" release-assets/* --clobber
-            gh release edit "$tag" --notes-file release-notes.md
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --repo "${{ github.repository }}" --clobber
+            gh release edit "$tag" --repo "${{ github.repository }}" --notes-file release-notes.md
           else
             gh release create "$tag" release-assets/* \
+              --repo "${{ github.repository }}" \
               --title "OBS Multi-Replay $tag" \
               --notes-file release-notes.md
           fi
