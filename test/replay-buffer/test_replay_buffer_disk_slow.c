@@ -69,9 +69,10 @@ int main(void)
 
 	CHECK(dir != NULL);
 	while ((entry = os_readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.' && (entry->d_name[1] == 0 ||
-						(entry->d_name[1] == '.' && entry->d_name[2] == 0)))
+		if (entry->d_name[0] == '.' &&
+		    (entry->d_name[1] == 0 || (entry->d_name[1] == '.' && entry->d_name[2] == 0))) {
 			continue;
+		}
 		fprintf(stderr, "leftover buffer file: %s\n", entry->d_name);
 		remaining++;
 	}

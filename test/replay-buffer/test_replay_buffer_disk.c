@@ -81,8 +81,9 @@ static bool collect_packet(void *data, struct encoder_packet *packet)
 {
 	struct collected *collected = data;
 
-	if (collected->count > 0 && packet->dts_usec < collected->previous_dts)
+	if (collected->count > 0 && packet->dts_usec < collected->previous_dts) {
 		collected->monotonic = false;
+	}
 
 	collected->previous_dts = packet->dts_usec;
 	collected->last_dts = packet->dts_usec;
@@ -123,9 +124,10 @@ static void check_cleanup(const char *root)
 
 	CHECK(dir != NULL);
 	while ((entry = os_readdir(dir)) != NULL) {
-		if (entry->d_name[0] == '.' && (entry->d_name[1] == 0 ||
-						(entry->d_name[1] == '.' && entry->d_name[2] == 0)))
+		if (entry->d_name[0] == '.' &&
+		    (entry->d_name[1] == 0 || (entry->d_name[1] == '.' && entry->d_name[2] == 0))) {
 			continue;
+		}
 		fprintf(stderr, "leftover buffer file: %s\n", entry->d_name);
 		remaining++;
 	}
@@ -226,8 +228,9 @@ static void test_no_keyframe(void)
 	struct replay_disk_save *save;
 	const char *detail = NULL;
 
-	for (int step = 0; step < 10; step++)
+	for (int step = 0; step < 10; step++) {
 		write_packet(disk, false, false, 0, (int64_t)step * 100000);
+	}
 
 	struct encoder_packet packet = make_packet(false, false, 0, SECONDS(1), 128);
 	save = replay_disk_write_and_save(disk, &packet, 0);

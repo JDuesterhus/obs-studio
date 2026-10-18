@@ -133,23 +133,26 @@ void ReplayBufferStorageWidget::OnModeChanged()
 {
 	UpdateEnabled();
 	RefreshSummary();
-	if (!updating)
+	if (!updating) {
 		emit Changed();
+	}
 }
 
 void ReplayBufferStorageWidget::OnDirectoryChanged()
 {
 	RefreshSummary();
-	if (!updating)
+	if (!updating) {
 		emit Changed();
+	}
 }
 
 void ReplayBufferStorageWidget::Browse()
 {
 	const QString selected = QFileDialog::getExistingDirectory(
 		this, QTStr("Basic.Settings.Output.ReplayBuffer.Storage.SelectFolder"), Directory());
-	if (!selected.isEmpty())
+	if (!selected.isEmpty()) {
 		directory->setText(selected);
+	}
 }
 
 void ReplayBufferStorageWidget::UpdateEnabled()
@@ -173,35 +176,40 @@ void ReplayBufferStorageWidget::RefreshSummary()
 	const int64_t freeBytes = path.isEmpty() ? -1 : os_get_free_space(QT_TO_UTF8(path));
 
 	QString estimateText;
-	if (estimateBytes < 0)
+	if (estimateBytes < 0) {
 		estimateText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.EstimateUnknown");
-	else
-		estimateText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.Estimate").arg(FormatBytes(estimateBytes));
+	} else {
+		estimateText =
+			QTStr("Basic.Settings.Output.ReplayBuffer.Storage.Estimate").arg(FormatBytes(estimateBytes));
+	}
 
 	QString freeText;
-	if (freeBytes < 0)
+	if (freeBytes < 0) {
 		freeText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.FreeUnknown");
-	else
+	} else {
 		freeText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.Free").arg(FormatBytes(freeBytes));
+	}
 
 	summary->setText(estimateText + QLatin1Char('\n') + freeText);
 
 	QString warningText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.WearWarning");
 	if (freeBytes >= 0 && estimateBytes >= 0 && estimateBytes + DISK_SPACE_WARNING_MARGIN > freeBytes) {
-		warningText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.NotEnoughSpace") +
-			      QLatin1Char('\n') + warningText;
+		warningText = QTStr("Basic.Settings.Output.ReplayBuffer.Storage.NotEnoughSpace") + QLatin1Char('\n') +
+			      warningText;
 	}
 	warning->setText(warningText);
 }
 
 QString ReplayBufferStorageWidget::FormatBytes(int64_t bytes)
 {
-	if (bytes < 0)
+	if (bytes < 0) {
 		return QTStr("Basic.Settings.Output.ReplayBuffer.Storage.Unknown");
+	}
 
 	const double megabytes = (double)bytes / (1024.0 * 1024.0);
-	if (megabytes >= 1024.0)
+	if (megabytes >= 1024.0) {
 		return QStringLiteral("%1 GB").arg(QString::number(megabytes / 1024.0, 'f', 1));
+	}
 	return QStringLiteral("%1 MB").arg(QString::number(megabytes, 'f', 0));
 }
 
