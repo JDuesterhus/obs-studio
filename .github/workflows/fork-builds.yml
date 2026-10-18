@@ -141,6 +141,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Prepare Xcode compilation cache
+        run: |
+          cas_path="${HOME}/Library/Developer/Xcode/DerivedData/CompilationCache.noindex"
+          mkdir -p "${cas_path}"
+          echo "XCODE_CAS_PATH=${cas_path}" >> "${GITHUB_ENV}"
+
       - name: Build OBS Studio
         uses: ./.github/actions/build-obs
         env:
