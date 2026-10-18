@@ -14,6 +14,8 @@ The feature was requested by the OBS community:
 This fork is based on OBS Studio 33.x. It is **not** an official OBS Project
 release and is not affiliated with or endorsed by the OBS Project.
 
+Downloads: <https://github.com/JDuesterhus/obs-studio/releases/latest>
+
 ## What this fork adds
 
 - Any number of extra Replay Buffer durations (for example 30 seconds,
@@ -233,6 +235,9 @@ compiled:
 | Replay Buffer dock hidden by default | Passed (not present until View > Docks) |
 | Dock duration and full-buffer buttons | Passed (real clips saved) |
 | German dock and settings terminology | Passed (Replaypuffer, no Wiedergabepuffer) |
+| CI: Windows x64 and ARM64 packages | Passed |
+| CI: Linux x86_64 package | Passed |
+| CI: macOS ARM64 and Intel packages | Passed |
 | Unit test for keyframe window selection | Passed |
 
 Example measurements from the integration runs:
@@ -249,7 +254,8 @@ Not tested yet:
 
 - Other audio codecs (Opus, PCM, FLAC) with the replay buffer.
 - Hardware encoders other than NVENC HEVC.
-- Linux and macOS builds are produced by CI but were not exercised locally.
+- Linux and macOS packages were built successfully in CI but were not run
+  locally on those operating systems.
 - Pausing the buffer, very long (multi-hour) buffers, and disk-full conditions.
 - Code signing / SmartScreen reputation for the released ZIP.
 - New translations were written from the existing OBS terminology but not
