@@ -1,3 +1,6 @@
+> ⚠️ **Disclaimer:** This is vibecoded slop and may become unmaintained at any
+> time. Use it at your own risk. For important work, use official OBS Studio.
+
 # OBS Studio: Multiple Replay Buffer Durations
 
 This repository is a fork of [OBS Studio](https://github.com/obsproject/obs-studio)
@@ -92,17 +95,28 @@ colliding filename gets OBS's usual ` (2)` suffix.
 
 ## Windows installation
 
+The GitHub Actions workflow produces a **ZIP archive, not a setup `.exe`**. It
+is the same kind of ZIP that the normal OBS Windows build produces.
+
 1. Download the latest `obs-studio-*-windows-x64.zip` from the repository's
    **Releases** page.
 2. Extract it to a folder of your choice. Do not run it from inside the ZIP.
-3. Run `bin\64bit\obs64.exe`.
+3. Start `bin\64bit\obs64.exe`.
 
-The build is a ZIP archive, not an installer, and it is not code-signed.
-Windows SmartScreen may warn about an unknown publisher; choose **More info >
-Run anyway** only if you trust the download. Windows 10 21H2 or newer is
-recommended. It uses your normal OBS configuration folder
-(`%APPDATA%\obs-studio`) unless you place a `portable_mode` file next to
-`obs64.exe`.
+Inside the extracted folder:
+
+- `bin\64bit\obs64.exe` is the program you start.
+- `core\` and `data\` contain the OBS modules and data files. Leave them next
+  to `bin\`.
+- The ZIP is relocatable; you can move the extracted folder anywhere.
+
+The build is not code-signed. Windows SmartScreen may warn about an unknown
+publisher; choose **More info > Run anyway** only if you trust the download.
+Windows 10 21H2 or newer is recommended. It uses your normal OBS configuration
+folder (`%APPDATA%\obs-studio`) by default. For a fully portable install, create
+an empty file named `portable_mode` inside `bin\64bit` (next to `obs64.exe`);
+OBS then keeps its configuration in the `config` folder at the root of the
+extracted archive.
 
 ## Building from source
 
