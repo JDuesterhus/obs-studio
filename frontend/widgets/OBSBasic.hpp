@@ -1077,6 +1077,7 @@ public slots:
 	void ReplayBufferSaveDuration(int seconds);
 	void ReplayBufferSaved();
 	void ReplayBufferSaveFailed(const QString &reason);
+	void ReplayBufferFailed(const QString &reason);
 	void ReplayBufferStopping();
 	void ReplayBufferStop(int code);
 

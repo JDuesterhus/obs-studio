@@ -34,6 +34,8 @@ target_sources(
     obs-ffmpeg-hls-mux.c
     obs-ffmpeg-mux.c
     obs-ffmpeg-mux.h
+    replay-buffer-disk.c
+    replay-buffer-disk.h
     obs-ffmpeg-output.c
     obs-ffmpeg-output.h
     obs-ffmpeg-source.c

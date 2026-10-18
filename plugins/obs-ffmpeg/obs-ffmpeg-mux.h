@@ -11,6 +11,9 @@
 
 typedef DARRAY(struct encoder_packet) mux_packets_t;
 
+struct replay_disk;
+struct replay_disk_save;
+
 struct ffmpeg_muxer {
 	obs_output_t *output;
 	os_process_pipe_t *pipe;
@@ -39,6 +42,10 @@ struct ffmpeg_muxer {
 	obs_hotkey_id hotkey;
 	volatile bool muxing;
 	mux_packets_t mux_packets;
+
+	/* disk-backed replay buffer */
+	struct replay_disk *disk;
+	struct replay_disk_save *disk_save;
 
 	/* split file */
 	bool found_video;

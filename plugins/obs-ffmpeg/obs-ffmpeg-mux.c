@@ -17,6 +17,7 @@
 #include "ffmpeg-mux/ffmpeg-mux.h"
 #include "obs-ffmpeg-mux.h"
 #include "obs-ffmpeg-formats.h"
+#include "replay-buffer-disk.h"
 #include "replay-buffer-window.h"
 
 #ifdef _WIN32
@@ -65,13 +66,37 @@ static inline void replay_buffer_clear(struct ffmpeg_muxer *stream)
 	stream->keyframes = 0;
 }
 
+static void replay_buffer_disk_cleanup(struct ffmpeg_muxer *stream)
+{
+	if (stream->disk_save)
+		replay_disk_save_cancel(stream->disk_save);
+
+	if (stream->mux_thread_joinable) {
+		pthread_join(stream->mux_thread, NULL);
+		stream->mux_thread_joinable = false;
+	}
+
+	if (stream->disk_save) {
+		replay_disk_save_free(stream->disk_save);
+		stream->disk_save = NULL;
+	}
+
+	if (stream->disk) {
+		replay_disk_destroy(stream->disk);
+		stream->disk = NULL;
+	}
+}
+
 static void ffmpeg_mux_destroy(void *data)
 {
 	struct ffmpeg_muxer *stream = data;
 
 	replay_buffer_clear(stream);
-	if (stream->mux_thread_joinable)
+	if (stream->mux_thread_joinable) {
 		pthread_join(stream->mux_thread, NULL);
+		stream->mux_thread_joinable = false;
+	}
+	replay_buffer_disk_cleanup(stream);
 	for (size_t i = 0; i < stream->mux_packets.num; i++)
 		obs_encoder_packet_release(&stream->mux_packets.array[i]);
 	da_free(stream->mux_packets);
@@ -985,6 +1010,7 @@ static void *replay_buffer_create(obs_data_t *settings, obs_output_t *output)
 	signal_handler_add(sh, "void saved()");
 	signal_handler_add(sh, "void saving(ptr output)");
 	signal_handler_add(sh, "void save_failed(string reason)");
+	signal_handler_add(sh, "void buffer_failed(string reason)");
 
 	return stream;
 }
@@ -1038,6 +1064,9 @@ static bool replay_buffer_start(void *data)
 {
 	struct ffmpeg_muxer *stream = data;
 
+	if (stream->disk)
+		replay_buffer_disk_cleanup(stream);
+
 	if (!obs_output_can_begin_data_capture(stream->output, 0))
 		return false;
 	if (!obs_output_initialize_encoders(stream->output, 0))
@@ -1046,6 +1075,7 @@ static bool replay_buffer_start(void *data)
 	obs_data_t *s = obs_output_get_settings(stream->output);
 	stream->max_time = obs_data_get_int(s, "max_time_sec") * 1000000LL;
 	stream->max_size = obs_data_get_int(s, "max_size_mb") * (1024 * 1024);
+	bool disk_mode = obs_data_get_bool(s, "disk_mode");
 
 	/*
 	 * Keep the buffer long enough for the longest configured duration even
@@ -1056,13 +1086,36 @@ static bool replay_buffer_start(void *data)
 	int64_t longest_duration = replay_buffer_longest_duration(obs_data_get_string(s, "extra_durations"));
 	if (longest_duration > stream->max_time)
 		stream->max_time = longest_duration;
+
+	if (disk_mode) {
+		const char *disk_path = obs_data_get_string(s, "disk_path");
+		char *disk_error = NULL;
+
+		stream->disk = replay_disk_create(disk_path, stream->max_time, &disk_error);
+		if (!stream->disk) {
+			struct dstr message = {0};
+			dstr_printf(&message, "%s: %s", obs_module_text("ReplayBuffer.DiskStartFailed"),
+				    disk_error ? disk_error : obs_module_text("ReplayBuffer.DiskPathUnavailable"));
+			warn("%s", message.array);
+			obs_output_set_last_error(stream->output, message.array);
+			dstr_free(&message);
+			bfree(disk_error);
+			obs_data_release(s);
+			return false;
+		}
+	}
 	obs_data_release(s);
 
 	os_atomic_set_bool(&stream->active, true);
 	os_atomic_set_bool(&stream->capturing, true);
 	stream->total_bytes = 0;
 	stream->replay_duration_usec = 0;
-	obs_output_begin_data_capture(stream->output, 0);
+	if (!obs_output_begin_data_capture(stream->output, 0)) {
+		os_atomic_set_bool(&stream->active, false);
+		os_atomic_set_bool(&stream->capturing, false);
+		replay_buffer_disk_cleanup(stream);
+		return false;
+	}
 
 	return true;
 }
@@ -1230,6 +1283,145 @@ error:
 	return NULL;
 }
 
+struct replay_disk_mux_context {
+	struct ffmpeg_muxer *stream;
+	bool found_video;
+	bool found_audio[MAX_AUDIO_MIXES];
+	int64_t video_offset;
+	int64_t video_pts_offset;
+	int64_t audio_offsets[MAX_AUDIO_MIXES];
+	int64_t audio_dts_offsets[MAX_AUDIO_MIXES];
+};
+
+static bool replay_disk_mux_callback(void *data, struct encoder_packet *packet)
+{
+	struct replay_disk_mux_context *ctx = data;
+
+	if (packet->type == OBS_ENCODER_VIDEO) {
+		if (!ctx->found_video) {
+			ctx->video_pts_offset = packet->pts;
+			ctx->video_offset = ctx->video_pts_offset * 1000000 / packet->timebase_den;
+			ctx->found_video = true;
+		}
+		packet->dts_usec -= ctx->video_offset;
+		packet->dts -= ctx->video_pts_offset;
+		packet->pts -= ctx->video_pts_offset;
+	} else {
+		if (packet->track_idx >= MAX_AUDIO_MIXES)
+			return false;
+		if (!ctx->found_audio[packet->track_idx]) {
+			ctx->found_audio[packet->track_idx] = true;
+			ctx->audio_offsets[packet->track_idx] = packet->dts_usec;
+			ctx->audio_dts_offsets[packet->track_idx] = packet->dts;
+		}
+		packet->dts_usec -= ctx->audio_offsets[packet->track_idx];
+		packet->dts -= ctx->audio_dts_offsets[packet->track_idx];
+		packet->pts -= ctx->audio_dts_offsets[packet->track_idx];
+	}
+
+	return write_packet(ctx->stream, packet);
+}
+
+static const char *replay_disk_failure_text(enum replay_disk_error error)
+{
+	switch (error) {
+	case REPLAY_DISK_ERROR_NO_KEYFRAME:
+		return obs_module_text("ReplayBuffer.NoKeyframe");
+	case REPLAY_DISK_ERROR_NO_SPACE:
+		return obs_module_text("ReplayBuffer.DiskNoSpace");
+	case REPLAY_DISK_ERROR_QUEUE:
+		return obs_module_text("ReplayBuffer.DiskSlow");
+	default:
+		return obs_module_text("ReplayBuffer.WriteFailed");
+	}
+}
+
+static void *replay_buffer_disk_mux_thread(void *data)
+{
+	struct ffmpeg_muxer *stream = data;
+	struct replay_disk_save *save = stream->disk_save;
+	struct replay_disk_mux_context ctx = {.stream = stream};
+	bool error = false;
+	bool wrote = false;
+	bool have_path = false;
+	const char *reason = NULL;
+
+	if (!replay_disk_save_wait(save)) {
+		const char *detail = NULL;
+		enum replay_disk_error disk_error = replay_disk_save_error(save, &detail);
+
+		/* A cancelled save is part of normal shutdown. */
+		if (disk_error == REPLAY_DISK_OK)
+			goto done;
+
+		warn("Could not prepare disk replay snapshot: %s", detail ? detail : "unknown error");
+		reason = replay_disk_failure_text(disk_error);
+		error = true;
+		goto done;
+	}
+
+	info("Saving %.2f seconds from the disk replay buffer",
+	     (double)replay_disk_save_duration(save) / 1000000.0);
+
+	generate_filename(stream, &stream->path, false);
+	have_path = true;
+
+	start_pipe(stream, stream->path.array);
+	if (!stream->pipe) {
+		warn("Failed to create process pipe");
+		reason = obs_module_text("ReplayBuffer.WriteFailed");
+		error = true;
+		goto done;
+	}
+
+	if (!send_headers(stream)) {
+		warn("Could not write headers for file '%s'", stream->path.array);
+		reason = obs_module_text("ReplayBuffer.WriteFailed");
+		error = true;
+		goto done;
+	}
+
+	if (!replay_disk_save_read(save, replay_disk_mux_callback, &ctx)) {
+		const char *detail = NULL;
+		enum replay_disk_error disk_error;
+
+		if (replay_disk_save_cancelled(save))
+			goto done;
+
+		disk_error = replay_disk_save_error(save, &detail);
+		warn("Could not read disk replay snapshot: %s", detail ? detail : "unknown error");
+		reason = replay_disk_failure_text(disk_error);
+		error = true;
+		goto done;
+	}
+
+	wrote = true;
+	info("Wrote disk replay buffer to '%s'", stream->path.array);
+
+done:
+	if (stream->pipe) {
+		os_process_pipe_destroy(stream->pipe);
+		stream->pipe = NULL;
+	}
+
+	os_atomic_set_bool(&stream->muxing, false);
+
+	if (error) {
+		if (have_path && stream->path.array && *stream->path.array)
+			os_unlink(stream->path.array);
+		signal_replay_save_failed(stream, reason ? reason : obs_module_text("ReplayBuffer.WriteFailed"));
+	} else if (wrote) {
+		calldata_t cd = {0};
+		signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
+		signal_handler_signal(sh, "saved", &cd);
+	} else if (have_path && stream->path.array && *stream->path.array) {
+		/* Cancelled while reading an already-created partial file. */
+		os_unlink(stream->path.array);
+	}
+
+	return NULL;
+}
+
 struct replay_buffer_scan_context {
 	struct ffmpeg_muxer *stream;
 };
@@ -1337,6 +1529,64 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 	}
 }
 
+static bool replay_buffer_disk_save(struct ffmpeg_muxer *stream, struct encoder_packet *packet)
+{
+	int64_t requested_duration = stream->replay_duration_usec;
+
+	stream->save_ts = 0;
+	stream->replay_duration_usec = 0;
+
+	if (stream->mux_thread_joinable) {
+		pthread_join(stream->mux_thread, NULL);
+		stream->mux_thread_joinable = false;
+	}
+	if (stream->disk_save) {
+		replay_disk_save_free(stream->disk_save);
+		stream->disk_save = NULL;
+	}
+	/* Do not leave a previous clip path visible if this save fails early. */
+	dstr_free(&stream->path);
+
+	struct replay_disk_save *save = replay_disk_write_and_save(stream->disk, packet, requested_duration);
+	if (!save) {
+		const char *detail = NULL;
+		enum replay_disk_error disk_error = replay_disk_get_error(stream->disk, &detail);
+		struct dstr message = {0};
+
+		dstr_printf(&message, "%s: %s", replay_disk_failure_text(disk_error),
+			    detail ? detail : "unknown error");
+		warn("%s", message.array);
+		obs_output_set_last_error(stream->output, message.array);
+		signal_replay_save_failed(stream, replay_disk_failure_text(disk_error));
+		dstr_free(&message);
+		return false;
+	}
+
+	calldata_t cd = {0};
+	calldata_set_ptr(&cd, "output", stream->output);
+	signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
+	signal_handler_signal(sh, "saving", &cd);
+	calldata_free(&cd);
+
+	if (requested_duration > 0) {
+		info("Requested %.2f seconds from the disk replay buffer",
+		     (double)requested_duration / 1000000.0);
+	}
+
+	stream->disk_save = save;
+	os_atomic_set_bool(&stream->muxing, true);
+	stream->mux_thread_joinable = pthread_create(&stream->mux_thread, NULL, replay_buffer_disk_mux_thread, stream) == 0;
+	if (!stream->mux_thread_joinable) {
+		warn("Failed to create disk muxer thread");
+		replay_disk_save_cancel(save);
+		os_atomic_set_bool(&stream->muxing, false);
+		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.WriteFailed"));
+		return false;
+	}
+
+	return true;
+}
+
 static void deactivate_replay_buffer(struct ffmpeg_muxer *stream, int code)
 {
 	if (code) {
@@ -1348,7 +1598,46 @@ static void deactivate_replay_buffer(struct ffmpeg_muxer *stream, int code)
 	os_atomic_set_bool(&stream->active, false);
 	os_atomic_set_bool(&stream->sent_headers, false);
 	os_atomic_set_bool(&stream->stopping, false);
+	if (stream->disk)
+		replay_buffer_disk_cleanup(stream);
 	replay_buffer_clear(stream);
+}
+
+static int replay_disk_output_code(enum replay_disk_error error)
+{
+	switch (error) {
+	case REPLAY_DISK_ERROR_NO_SPACE:
+		return OBS_OUTPUT_NO_SPACE;
+	case REPLAY_DISK_ERROR_QUEUE:
+		return OBS_OUTPUT_ENCODE_ERROR;
+	default:
+		return OBS_OUTPUT_ERROR;
+	}
+}
+
+static void signal_replay_buffer_failed(struct ffmpeg_muxer *stream, const char *reason)
+{
+	calldata_t cd = {0};
+	calldata_set_string(&cd, "reason", reason);
+	signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
+	signal_handler_signal(sh, "buffer_failed", &cd);
+	calldata_free(&cd);
+}
+
+static void replay_buffer_disk_error(struct ffmpeg_muxer *stream)
+{
+	const char *detail = NULL;
+	enum replay_disk_error disk_error = replay_disk_get_error(stream->disk, &detail);
+	struct dstr message = {0};
+
+	dstr_printf(&message, "%s: %s", replay_disk_failure_text(disk_error),
+		    detail ? detail : "unknown error");
+	warn("%s", message.array);
+	obs_output_set_last_error(stream->output, message.array);
+	signal_replay_buffer_failed(stream, replay_disk_failure_text(disk_error));
+	dstr_free(&message);
+
+	deactivate_replay_buffer(stream, replay_disk_output_code(disk_error));
 }
 
 static void replay_buffer_data(void *data, struct encoder_packet *packet)
@@ -1370,6 +1659,30 @@ static void replay_buffer_data(void *data, struct encoder_packet *packet)
 			deactivate_replay_buffer(stream, 0);
 			return;
 		}
+	}
+
+	if (stream->disk) {
+		bool save_now = stream->save_ts && packet->sys_dts_usec >= stream->save_ts;
+
+		if (save_now && !os_atomic_load_bool(&stream->muxing)) {
+			if (!replay_buffer_disk_save(stream, packet)) {
+				const char *detail = NULL;
+				enum replay_disk_error disk_error = replay_disk_get_error(stream->disk, &detail);
+
+				/* A failed thread start is not a buffer failure: the
+				 * packet was still queued and recording continues. */
+				UNUSED_PARAMETER(detail);
+				if (disk_error != REPLAY_DISK_OK)
+					replay_buffer_disk_error(stream);
+			}
+			return;
+		}
+
+		if (!replay_disk_write(stream->disk, packet)) {
+			replay_buffer_disk_error(stream);
+			return;
+		}
+		return;
 	}
 
 	obs_encoder_packet_ref(&pkt, packet);
@@ -1406,6 +1719,8 @@ static void replay_buffer_defaults(obs_data_t *s)
 	obs_data_set_default_string(s, "extension", "mp4");
 	obs_data_set_default_bool(s, "allow_spaces", true);
 	obs_data_set_default_string(s, "extra_durations", "");
+	obs_data_set_default_bool(s, "disk_mode", false);
+	obs_data_set_default_string(s, "disk_path", "");
 }
 
 struct obs_output_info replay_buffer = {

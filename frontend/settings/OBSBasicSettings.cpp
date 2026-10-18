@@ -20,6 +20,7 @@
 #include "OBSHotkeyLabel.hpp"
 #include "OBSHotkeyWidget.hpp"
 #include "ReplayBufferDurationsWidget.hpp"
+#include "ReplayBufferStorageWidget.hpp"
 
 #include <components/Multiview.hpp>
 #include <components/OBSSourceLabel.hpp>
@@ -361,12 +362,27 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	advRBDurations = new ReplayBufferDurationsWidget(this);
 	ui->formLayout_30->addRow(advRBDurations);
 
+	simpleRBStorage = new ReplayBufferStorageWidget(this);
+	ui->formLayout_24->addRow(simpleRBStorage);
+	advRBStorage = new ReplayBufferStorageWidget(this);
+	ui->formLayout_30->addRow(advRBStorage);
+
 	connect(simpleRBDurations, &ReplayBufferDurationsWidget::Changed, this, [this]() {
 		ReplayBufferDurationsChanged();
 		SimpleReplayBufferChanged();
 	});
 	connect(advRBDurations, &ReplayBufferDurationsWidget::Changed, this, [this]() {
 		ReplayBufferDurationsChanged();
+		AdvReplayBufferChanged();
+	});
+	connect(simpleRBStorage, &ReplayBufferStorageWidget::Changed, this, [this]() {
+		if (!loading)
+			outputsChanged = true;
+		SimpleReplayBufferChanged();
+	});
+	connect(advRBStorage, &ReplayBufferStorageWidget::Changed, this, [this]() {
+		if (!loading)
+			outputsChanged = true;
 		AdvReplayBufferChanged();
 	});
 
@@ -1861,6 +1877,15 @@ void OBSBasicSettings::LoadSimpleOutputSettings()
 		ui->simpleRBSecMax->setProperty("changed", true);
 	}
 
+	const char *simpleDiskPath = config_get_string(main->Config(), "SimpleOutput", "RecRBDiskPath");
+	const char *simpleRecordingPath = config_get_string(main->Config(), "SimpleOutput", "FilePath");
+	simpleRBStorage->SetDiskMode(config_get_bool(main->Config(), "SimpleOutput", "RecRBDiskMode"));
+	const QString simpleDiskDirectory = (simpleDiskPath && *simpleDiskPath)
+						    ? QString::fromUtf8(simpleDiskPath)
+						    : QString::fromUtf8(simpleRecordingPath ? simpleRecordingPath : "");
+	if (!simpleDiskDirectory.isEmpty())
+		simpleRBStorage->SetDirectory(simpleDiskDirectory);
+
 	SimpleStreamingEncoderChanged();
 }
 
@@ -2290,6 +2315,9 @@ void OBSBasicSettings::LoadOutputSettings()
 		ui->advNetworkGroupBox->setEnabled(false);
 	}
 
+	SimpleReplayBufferChanged();
+	AdvReplayBufferChanged();
+
 	loading = false;
 }
 
@@ -2667,6 +2695,15 @@ void OBSBasicSettings::LoadAdvancedSettings()
 		ui->advRBSecMax->setValue(advRBDurations->LongestDuration());
 		ui->advRBSecMax->setProperty("changed", true);
 	}
+
+	const char *advDiskPath = config_get_string(main->Config(), "AdvOut", "RecRBDiskPath");
+	const char *advRecordingPath = config_get_string(main->Config(), "AdvOut", "RecFilePath");
+	advRBStorage->SetDiskMode(config_get_bool(main->Config(), "AdvOut", "RecRBDiskMode"));
+	const QString advDiskDirectory = (advDiskPath && *advDiskPath)
+						  ? QString::fromUtf8(advDiskPath)
+						  : QString::fromUtf8(advRecordingPath ? advRecordingPath : "");
+	if (!advDiskDirectory.isEmpty())
+		advRBStorage->SetDirectory(advDiskDirectory);
 
 	ui->reconnectEnable->setChecked(reconnect);
 	ui->reconnectRetryDelay->setValue(retryDelay);
@@ -3644,6 +3681,11 @@ void OBSBasicSettings::SaveOutputSettings()
 	const QString advDurations = advRBDurations->DurationsString();
 	config_set_string(main->Config(), "SimpleOutput", "RecRBExtraDurations", QT_TO_UTF8(simpleDurations));
 	config_set_string(main->Config(), "AdvOut", "RecRBExtraDurations", QT_TO_UTF8(advDurations));
+	config_set_bool(main->Config(), "SimpleOutput", "RecRBDiskMode", simpleRBStorage->DiskMode());
+	config_set_string(main->Config(), "SimpleOutput", "RecRBDiskPath",
+			  QT_TO_UTF8(simpleRBStorage->Directory()));
+	config_set_bool(main->Config(), "AdvOut", "RecRBDiskMode", advRBStorage->DiskMode());
+	config_set_string(main->Config(), "AdvOut", "RecRBDiskPath", QT_TO_UTF8(advRBStorage->Directory()));
 
 	const char *currentMode = config_get_string(main->Config(), "Output", "Mode");
 	replayBufferDurationsChanged = replayBufferDurationsChanged || (simpleDurations != previousSimpleDurations) ||
@@ -5187,10 +5229,11 @@ void OBSBasicSettings::SimpleReplayBufferChanged()
 {
 	QString qual = ui->simpleOutRecQuality->currentData().toString();
 	bool streamQuality = qual == "Stream";
+	bool diskMode = simpleRBStorage->DiskMode();
 	int abitrate = 0;
 
-	ui->simpleRBMegsMax->setVisible(!streamQuality);
-	ui->simpleRBMegsMaxLabel->setVisible(!streamQuality);
+	ui->simpleRBMegsMax->setVisible(!streamQuality && !diskMode);
+	ui->simpleRBMegsMaxLabel->setVisible(!streamQuality && !diskMode);
 
 	if (ui->simpleOutRecFormat->currentText().compare("flv") == 0 || streamQuality) {
 		abitrate = ui->simpleOutputABitrate->currentText().toInt();
@@ -5236,8 +5279,12 @@ void OBSBasicSettings::SimpleReplayBufferChanged()
 		memMB = 1;
 	}
 
+	simpleRBStorage->SetEstimate(diskMode ? memMB * 1024 * 1024 : -1);
+	ui->simpleRBEstimate->setVisible(!diskMode);
 	ui->simpleRBEstimate->setObjectName("");
-	if (streamQuality) {
+	if (diskMode) {
+		/* The storage widget shows the disk estimate and free space. */
+	} else if (streamQuality) {
 		if (memMB <= memMaxMB) {
 			ui->simpleRBEstimate->setText(QTStr(ESTIMATE_STR).arg(QString::number(int(memMB))));
 		} else {
@@ -5299,6 +5346,7 @@ void OBSBasicSettings::AdvReplayBufferChanged()
 
 	bool lossless = strcmp(rateControl, "lossless") == 0 || ui->advOutRecType->currentIndex() == 1;
 	bool replayBufferEnabled = ui->advReplayBuf->isChecked();
+	bool diskMode = advRBStorage->DiskMode();
 
 	int abitrate = 0;
 	if (ui->advOutRecTrack1->isChecked()) {
@@ -5345,8 +5393,13 @@ void OBSBasicSettings::AdvReplayBufferChanged()
 		varRateControl = false;
 	}
 
+	advRBStorage->SetEstimate(diskMode ? memMB * 1024 * 1024 : -1);
+	ui->advRBEstimate->setVisible(!diskMode);
 	ui->advRBEstimate->setObjectName("");
-	if (varRateControl) {
+	if (diskMode) {
+		ui->advRBMegsMax->setVisible(false);
+		ui->advRBMegsMaxLabel->setVisible(false);
+	} else if (varRateControl) {
 		ui->advRBMegsMax->setVisible(false);
 		ui->advRBMegsMaxLabel->setVisible(false);
 

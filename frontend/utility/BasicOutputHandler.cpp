@@ -151,6 +151,14 @@ void OBSReplayBufferSaveFailed(void *data, calldata_t *params)
 				  QString::fromUtf8(reason ? reason : ""));
 }
 
+void OBSReplayBufferFailed(void *data, calldata_t *params)
+{
+	BasicOutputHandler *output = static_cast<BasicOutputHandler *>(data);
+	const char *reason = calldata_string(params, "reason");
+	QMetaObject::invokeMethod(output->main, &OBSBasic::ReplayBufferFailed, Qt::QueuedConnection,
+				  QString::fromUtf8(reason ? reason : ""));
+}
+
 static void OBSStartVirtualCam(void *data, calldata_t * /* params */)
 {
 	BasicOutputHandler *output = static_cast<BasicOutputHandler *>(data);

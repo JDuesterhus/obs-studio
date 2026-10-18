@@ -37,8 +37,8 @@ jobs:
       - name: Build and run tests
         shell: pwsh
         run: |
-          cmake --build --preset windows-x64 --config RelWithDebInfo --target test_replay_buffer_window
-          ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure -R test_replay_buffer_window
+          cmake --build --preset windows-x64 --config RelWithDebInfo --target test_replay_buffer_window test_replay_buffer_disk test_replay_buffer_disk_nospace test_replay_buffer_disk_slow
+          ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure -R test_replay_buffer
 
   windows:
     name: Windows ${{ matrix.arch }}

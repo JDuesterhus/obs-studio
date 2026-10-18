@@ -14,4 +14,6 @@ target_sources(
     settings/OBSHotkeyWidget.hpp
     settings/ReplayBufferDurationsWidget.cpp
     settings/ReplayBufferDurationsWidget.hpp
+    settings/ReplayBufferStorageWidget.cpp
+    settings/ReplayBufferStorageWidget.hpp
 )

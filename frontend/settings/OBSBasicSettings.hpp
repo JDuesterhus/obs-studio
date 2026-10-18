@@ -33,6 +33,7 @@ class OBSBasic;
 class OBSHotkeyWidget;
 class OBSPropertiesView;
 class ReplayBufferDurationsWidget;
+class ReplayBufferStorageWidget;
 struct FFmpegFormat;
 struct OBSTheme;
 
@@ -119,6 +120,8 @@ private:
 	/* Additional replay buffer durations, shown in both output modes. */
 	ReplayBufferDurationsWidget *simpleRBDurations = nullptr;
 	ReplayBufferDurationsWidget *advRBDurations = nullptr;
+	ReplayBufferStorageWidget *simpleRBStorage = nullptr;
+	ReplayBufferStorageWidget *advRBStorage = nullptr;
 	void ReplayBufferDurationsChanged();
 
 	uint32_t outputCX = 0;

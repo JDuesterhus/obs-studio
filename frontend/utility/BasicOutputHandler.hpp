@@ -67,6 +67,7 @@ struct BasicOutputHandler {
 	OBSSignal replayBufferStopping;
 	OBSSignal replayBufferSaved;
 	OBSSignal replayBufferSaveFailed;
+	OBSSignal replayBufferFailed;
 
 	BasicOutputHandler(OBSBasic *main_);
 
@@ -127,6 +128,7 @@ void OBSStopReplayBuffer(void *data, calldata_t *params);
 void OBSReplayBufferStopping(void *data, calldata_t *params);
 void OBSReplayBufferSaved(void *data, calldata_t *params);
 void OBSReplayBufferSaveFailed(void *data, calldata_t *params);
+void OBSReplayBufferFailed(void *data, calldata_t *params);
 
 inline bool can_use_output(const char *prot, const char *output, const char *prot_test1,
 			   const char *prot_test2 = nullptr)

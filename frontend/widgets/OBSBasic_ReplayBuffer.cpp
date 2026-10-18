@@ -335,6 +335,12 @@ void OBSBasic::ReplayBufferSaveFailed(const QString &reason)
 	ShowStatusBarMessage(msg);
 }
 
+void OBSBasic::ReplayBufferFailed(const QString &reason)
+{
+	QString msg = QTStr("Basic.StatusBar.ReplayBufferFailed").arg(reason);
+	ShowStatusBarMessage(msg);
+}
+
 void OBSBasic::ReplayBufferSaved()
 {
 	if (!outputHandler || !outputHandler->replayBuffer) {

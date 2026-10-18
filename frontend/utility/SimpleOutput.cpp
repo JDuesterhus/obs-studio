@@ -237,6 +237,7 @@ SimpleOutput::SimpleOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 			replayBufferStopping.Connect(signal, "stopping", OBSReplayBufferStopping, this);
 			replayBufferSaved.Connect(signal, "saved", OBSReplayBufferSaved, this);
 			replayBufferSaveFailed.Connect(signal, "save_failed", OBSReplayBufferSaveFailed, this);
+			replayBufferFailed.Connect(signal, "buffer_failed", OBSReplayBufferFailed, this);
 		}
 
 		const char *mux = "ffmpeg_muxer";
@@ -836,6 +837,8 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 	const char *rbPrefix = config_get_string(main->Config(), "SimpleOutput", "RecRBPrefix");
 	const char *rbSuffix = config_get_string(main->Config(), "SimpleOutput", "RecRBSuffix");
 	const char *rbExtraDurations = config_get_string(main->Config(), "SimpleOutput", "RecRBExtraDurations");
+	bool rbDiskMode = config_get_bool(main->Config(), "SimpleOutput", "RecRBDiskMode");
+	const char *rbDiskPath = config_get_string(main->Config(), "SimpleOutput", "RecRBDiskPath");
 	int rbTime = config_get_int(main->Config(), "SimpleOutput", "RecRBTime");
 	int rbSize = config_get_int(main->Config(), "SimpleOutput", "RecRBSize");
 	int tracks = config_get_int(main->Config(), "SimpleOutput", "RecTracks");
@@ -856,6 +859,9 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 		obs_data_set_int(settings, "max_time_sec", rbTime);
 		obs_data_set_int(settings, "max_size_mb", usingRecordingPreset ? rbSize : 0);
 		obs_data_set_string(settings, "extra_durations", rbExtraDurations ? rbExtraDurations : "");
+		obs_data_set_bool(settings, "disk_mode", rbDiskMode);
+		obs_data_set_string(settings, "disk_path",
+				    (rbDiskPath && *rbDiskPath) ? rbDiskPath : (path ? path : ""));
 	} else {
 		f = GetFormatString(filenameFormat, nullptr, nullptr);
 		string strPath = GetRecordingFilename(path, ffmpegOutput ? "avi" : format, noSpace, overwriteIfExists,
@@ -919,7 +925,14 @@ bool SimpleOutput::StartReplayBuffer()
 		return false;
 	}
 	if (!obs_output_start(replayBuffer)) {
-		QMessageBox::critical(main, QTStr("Output.StartReplayFailed"), QTStr("Output.StartFailedGeneric"));
+		QString error_reason;
+		const char *error = obs_output_get_last_error(replayBuffer);
+		if (error) {
+			error_reason = QT_UTF8(error);
+		} else {
+			error_reason = QTStr("Output.StartFailedGeneric");
+		}
+		QMessageBox::critical(main, QTStr("Output.StartReplayFailed"), error_reason);
 		return false;
 	}
 
