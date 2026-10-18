@@ -1360,8 +1360,7 @@ static void *replay_buffer_disk_mux_thread(void *data)
 		goto done;
 	}
 
-	info("Saving %.2f seconds from the disk replay buffer",
-	     (double)replay_disk_save_duration(save) / 1000000.0);
+	info("Saving %.2f seconds from the disk replay buffer", (double)replay_disk_save_duration(save) / 1000000.0);
 
 	generate_filename(stream, &stream->path, false);
 	have_path = true;
@@ -1454,8 +1453,7 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 
 	struct replay_buffer_scan_context scan = {stream};
 	struct replay_buffer_window window;
-	if (!replay_buffer_find_window(num_packets, replay_buffer_scan_packet, &scan, requested_duration,
-				       &window)) {
+	if (!replay_buffer_find_window(num_packets, replay_buffer_scan_packet, &scan, requested_duration, &window)) {
 		warn("Cannot save replay buffer yet: no video keyframe is available");
 		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.NoKeyframe"));
 		return;
@@ -1569,13 +1567,13 @@ static bool replay_buffer_disk_save(struct ffmpeg_muxer *stream, struct encoder_
 	calldata_free(&cd);
 
 	if (requested_duration > 0) {
-		info("Requested %.2f seconds from the disk replay buffer",
-		     (double)requested_duration / 1000000.0);
+		info("Requested %.2f seconds from the disk replay buffer", (double)requested_duration / 1000000.0);
 	}
 
 	stream->disk_save = save;
 	os_atomic_set_bool(&stream->muxing, true);
-	stream->mux_thread_joinable = pthread_create(&stream->mux_thread, NULL, replay_buffer_disk_mux_thread, stream) == 0;
+	stream->mux_thread_joinable =
+		pthread_create(&stream->mux_thread, NULL, replay_buffer_disk_mux_thread, stream) == 0;
 	if (!stream->mux_thread_joinable) {
 		warn("Failed to create disk muxer thread");
 		replay_disk_save_cancel(save);
@@ -1630,8 +1628,7 @@ static void replay_buffer_disk_error(struct ffmpeg_muxer *stream)
 	enum replay_disk_error disk_error = replay_disk_get_error(stream->disk, &detail);
 	struct dstr message = {0};
 
-	dstr_printf(&message, "%s: %s", replay_disk_failure_text(disk_error),
-		    detail ? detail : "unknown error");
+	dstr_printf(&message, "%s: %s", replay_disk_failure_text(disk_error), detail ? detail : "unknown error");
 	warn("%s", message.array);
 	obs_output_set_last_error(stream->output, message.array);
 	signal_replay_buffer_failed(stream, replay_disk_failure_text(disk_error));
