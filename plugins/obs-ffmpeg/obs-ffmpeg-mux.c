@@ -1157,6 +1157,15 @@ static void insert_packet(mux_packets_t *packets, struct encoder_packet *packet,
 	da_insert(*packets, idx, &pkt);
 }
 
+static void signal_replay_save_failed(struct ffmpeg_muxer *stream, const char *reason)
+{
+	calldata_t cd = {0};
+	calldata_set_string(&cd, "reason", reason);
+	signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
+	signal_handler_signal(sh, "save_failed", &cd);
+	calldata_free(&cd);
+}
+
 static void *replay_buffer_mux_thread(void *data)
 {
 	struct ffmpeg_muxer *stream = data;
@@ -1205,22 +1214,20 @@ error:
 	da_free(stream->mux_packets);
 	os_atomic_set_bool(&stream->muxing, false);
 
-	if (!error) {
+	if (error) {
+		/* A file whose headers or packets could not be written is not a
+		 * valid clip.  Remove the partial file instead of leaving a tiny
+		 * unplayable artifact behind. */
+		if (stream->path.array && *stream->path.array)
+			os_unlink(stream->path.array);
+		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.WriteFailed"));
+	} else {
 		calldata_t cd = {0};
 		signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
 		signal_handler_signal(sh, "saved", &cd);
 	}
 
 	return NULL;
-}
-
-static void signal_replay_save_failed(struct ffmpeg_muxer *stream, const char *reason)
-{
-	calldata_t cd = {0};
-	calldata_set_string(&cd, "reason", reason);
-	signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
-	signal_handler_signal(sh, "save_failed", &cd);
-	calldata_free(&cd);
 }
 
 struct replay_buffer_scan_context {
