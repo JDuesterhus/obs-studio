@@ -177,6 +177,12 @@ two seconds; a longer interval (OBS's simple output can default to several
 seconds) adds more pre-roll. This is intentional: cutting inside a GOP would
 produce a clip whose first frames cannot be decoded.
 
+A whole-buffer save can likewise include up to one disk segment of extra
+footage. Segments are capped at 60 seconds, or a quarter of the configured
+window for short buffers, so a 30-second buffer may save up to about 37 seconds.
+A duration-specific save still targets the requested length and normally lands
+within one keyframe interval above it.
+
 If the buffer has not received a video keyframe yet (usually only for a fraction
 of a second after starting), OBS shows a status-bar warning instead of writing
 an empty or corrupt file. If muxing itself fails (for example the helper process
@@ -353,8 +359,8 @@ Example measurements from the integration runs:
 | 10 s | 10.1 s | MP4, Explorer: 00:00:10 |
 | 20 s | 21.2 s | MP4, Explorer: 00:00:21 |
 | 20 s from a 12 s buffer | 11.3 s | MP4 |
-| Disk mode, whole 30 s window | 30.1 s | MP4, Explorer: 00:00:30 |
-| Disk mode, 10 s request | 10.7 s | MP4 |
+| Disk mode, whole 30 s window | 34.1 s | MP4 |
+| Disk mode, 10 s request | 11.2 s | MP4 |
 | Disk mode, 30 s request | 30.1 s | MP4 |
 | Disk mode, partially filled 21 s buffer | 21.6 s | MP4, HEVC |
 | Disk mode, 10 s request after 45 s | 13.3 s | MP4, multi-segment |
