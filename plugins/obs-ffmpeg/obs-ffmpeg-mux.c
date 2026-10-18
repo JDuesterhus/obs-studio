@@ -1318,7 +1318,13 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 	signal_handler_signal(sh, "saving", &cd);
 	calldata_free(&cd);
 
-	generate_filename(stream, &stream->path, true);
+	/*
+	 * Never overwrite an existing replay file.  Besides preserving earlier
+	 * saves, this guarantees that a failed mux can safely remove only the
+	 * file it created rather than a valid clip that happened to share the
+	 * timestamp-based name.
+	 */
+	generate_filename(stream, &stream->path, false);
 
 	os_atomic_set_bool(&stream->muxing, true);
 	stream->mux_thread_joinable = pthread_create(&stream->mux_thread, NULL, replay_buffer_mux_thread, stream) == 0;

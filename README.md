@@ -87,7 +87,8 @@ If the buffer has not received a video keyframe yet (usually only for a fraction
 of a second after starting), OBS shows a status-bar warning instead of writing
 an empty or corrupt file. If muxing itself fails (for example the helper process
 cannot start or the disk is full), the partial file is deleted and the failure
-is reported in the status bar.
+is reported in the status bar. Existing replay files are never overwritten; a
+colliding filename gets OBS's usual ` (2)` suffix.
 
 ## Windows installation
 
@@ -158,6 +159,7 @@ compiled:
 | Hotkey list updates after applying new durations | Passed |
 | Hotkey bindings survive an OBS restart | Passed |
 | Legacy profile with no extra durations configured | Passed |
+| Two saves with the same generated filename | Passed: distinct files, no overwrite |
 | Mux-helper failure (helper removed) | Passed: warning shown, no partial file left |
 | Unit test for keyframe window selection | Passed |
 
