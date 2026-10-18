@@ -137,8 +137,9 @@ static void set_error_locked(struct replay_disk *disk, enum replay_disk_error er
 {
 	va_list args;
 
-	if (disk->error != REPLAY_DISK_OK)
+	if (disk->error != REPLAY_DISK_OK) {
 		return;
+	}
 
 	disk->error = error;
 	va_start(args, format);
@@ -174,12 +175,14 @@ static void refresh_lock_file(struct replay_disk *disk)
 {
 	time_t now;
 
-	if (!disk->lock_file)
+	if (!disk->lock_file) {
 		return;
+	}
 
 	now = time(NULL);
-	if (now - disk->last_lock_update < 60)
+	if (now - disk->last_lock_update < 60) {
 		return;
+	}
 
 	fputc('.', disk->lock_file);
 	fflush(disk->lock_file);
@@ -190,8 +193,9 @@ static void fail_save_locked(struct replay_disk_save *save, enum replay_disk_err
 {
 	va_list args;
 
-	if (!save || save->ready || save->failed)
+	if (!save || save->ready || save->failed) {
 		return;
+	}
 
 	save->failed = true;
 	save->error = error;
@@ -199,8 +203,9 @@ static void fail_save_locked(struct replay_disk_save *save, enum replay_disk_err
 	vsnprintf(save->detail, sizeof(save->detail), format, args);
 	va_end(args);
 
-	if (save->disk->pending_save == save)
+	if (save->disk->pending_save == save) {
 		save->disk->pending_save = NULL;
+	}
 
 	pthread_cond_broadcast(&save->disk->cond);
 }
@@ -209,8 +214,9 @@ static void fail_save(struct replay_disk_save *save, enum replay_disk_error erro
 {
 	va_list args;
 
-	if (!save)
+	if (!save) {
 		return;
+	}
 
 	pthread_mutex_lock(&save->disk->mutex);
 	if (!save->failed) {
@@ -219,8 +225,9 @@ static void fail_save(struct replay_disk_save *save, enum replay_disk_error erro
 		va_start(args, format);
 		vsnprintf(save->detail, sizeof(save->detail), format, args);
 		va_end(args);
-		if (save->disk->pending_save == save)
+		if (save->disk->pending_save == save) {
 			save->disk->pending_save = NULL;
+		}
 	}
 	pthread_cond_broadcast(&save->disk->cond);
 	pthread_mutex_unlock(&save->disk->mutex);
@@ -228,15 +235,17 @@ static void fail_save(struct replay_disk_save *save, enum replay_disk_error erro
 
 static void destroy_segment_locked(struct replay_disk *disk, struct replay_disk_segment *segment)
 {
-	if (!segment)
+	if (!segment) {
 		return;
+	}
 
 	if (segment->file) {
 		fclose(segment->file);
 		segment->file = NULL;
 	}
-	if (segment->path.array && *segment->path.array)
+	if (segment->path.array && *segment->path.array) {
 		os_unlink(segment->path.array);
+	}
 
 	disk->total_bytes -= segment->size;
 	dstr_free(&segment->path);
@@ -261,10 +270,11 @@ static void delete_expired_segments_locked(struct replay_disk *disk)
 static void remove_keyframes_for_segment_locked(struct replay_disk *disk, struct replay_disk_segment *segment)
 {
 	for (size_t i = 0; i < disk->keyframes.num;) {
-		if (disk->keyframes.array[i].segment == segment)
+		if (disk->keyframes.array[i].segment == segment) {
 			da_erase(disk->keyframes, i);
-		else
+		} else {
 			i++;
+		}
 	}
 }
 
@@ -282,15 +292,17 @@ static void prune_segments_locked(struct replay_disk *disk)
 			 * duration plus one segment.
 			 */
 			if (disk->max_time_usec <= 0 ||
-			    disk->newest_dts_usec - segment->end_dts_usec <= disk->max_time_usec)
+			    disk->newest_dts_usec - segment->end_dts_usec <= disk->max_time_usec) {
 				break;
+			}
 
 			segment->expired = true;
 			remove_keyframes_for_segment_locked(disk, segment);
 		}
 
-		if (segment->refs > 0)
+		if (segment->refs > 0) {
 			break;
+		}
 
 		da_erase(disk->segments, 0);
 		destroy_segment_locked(disk, segment);
@@ -306,8 +318,8 @@ static bool create_segment_locked(struct replay_disk *disk)
 
 	segment->file = os_fopen(segment->path.array, "wb");
 	if (!segment->file) {
-		set_error_locked(disk, REPLAY_DISK_ERROR_IO, "could not create segment '%s': %s",
-				 segment->path.array, strerror(errno));
+		set_error_locked(disk, REPLAY_DISK_ERROR_IO, "could not create segment '%s': %s", segment->path.array,
+				 strerror(errno));
 		dstr_free(&segment->path);
 		bfree(segment);
 		return false;
@@ -326,8 +338,8 @@ static bool roll_segment_locked(struct replay_disk *disk)
 		disk->current->file = NULL;
 
 		if (flush_failed || close_failed) {
-			set_error_locked(disk, REPLAY_DISK_ERROR_IO,
-					 "could not finish replay buffer segment: %s", strerror(errno));
+			set_error_locked(disk, REPLAY_DISK_ERROR_IO, "could not finish replay buffer segment: %s",
+					 strerror(errno));
 			return false;
 		}
 	}
@@ -344,33 +356,39 @@ static bool capture_save_locked(struct replay_disk *disk, struct replay_disk_sav
 	int end_segment = -1;
 	struct replay_disk_keyframe *keyframe;
 
-	if (!save)
+	if (!save) {
 		return false;
+	}
 	if (save->target_seq == 0 || disk->segments.num == 0) {
 		fail_save_locked(save, REPLAY_DISK_ERROR_NO_KEYFRAME, "the replay buffer is empty");
 		return false;
 	}
 
-	if (save->requested_duration_usec > 0)
+	if (save->requested_duration_usec > 0) {
 		cutoff = target_dts_usec > INT64_MIN + save->requested_duration_usec
 				 ? target_dts_usec - save->requested_duration_usec
 				 : INT64_MIN;
+	}
 
 	for (size_t i = 0; i < disk->keyframes.num; i++) {
 		struct replay_disk_keyframe *candidate = &disk->keyframes.array[i];
 
-		if (candidate->seq > save->target_seq)
+		if (candidate->seq > save->target_seq) {
 			break;
-		if (first_keyframe < 0)
+		}
+		if (first_keyframe < 0) {
 			first_keyframe = (int)i;
-		if (candidate->dts_usec <= cutoff)
+		}
+		if (candidate->dts_usec <= cutoff) {
 			best_keyframe = (int)i;
+		}
 	}
 
-	if (save->requested_duration_usec <= 0)
+	if (save->requested_duration_usec <= 0) {
 		best_keyframe = first_keyframe;
-	else if (best_keyframe < 0)
+	} else if (best_keyframe < 0) {
 		best_keyframe = first_keyframe;
+	}
 
 	if (best_keyframe < 0) {
 		fail_save_locked(save, REPLAY_DISK_ERROR_NO_KEYFRAME, "no video keyframe is available");
@@ -380,10 +398,12 @@ static bool capture_save_locked(struct replay_disk *disk, struct replay_disk_sav
 	keyframe = &disk->keyframes.array[best_keyframe];
 
 	for (size_t i = 0; i < disk->segments.num; i++) {
-		if (disk->segments.array[i] == keyframe->segment)
+		if (disk->segments.array[i] == keyframe->segment) {
 			start_segment = (int)i;
-		if (disk->segments.array[i] == disk->current)
+		}
+		if (disk->segments.array[i] == disk->current) {
 			end_segment = (int)i;
+		}
 	}
 
 	if (start_segment < 0 || end_segment < start_segment) {
@@ -445,8 +465,7 @@ static bool write_record(struct replay_disk *disk, struct encoder_packet *packet
 	segment = disk->current;
 	bool time_to_roll = segment->size > 0 &&
 			    packet->dts_usec - segment->start_dts_usec >= disk->segment_duration_usec;
-	if (time_to_roll ||
-	    (segment->size > 0 && segment->size + (int64_t)record_size > REPLAY_DISK_SEGMENT_BYTES)) {
+	if (time_to_roll || (segment->size > 0 && segment->size + (int64_t)record_size > REPLAY_DISK_SEGMENT_BYTES)) {
 		if (!roll_segment_locked(disk)) {
 			pthread_mutex_unlock(&disk->mutex);
 			return false;
@@ -470,23 +489,24 @@ static bool write_record(struct replay_disk *disk, struct encoder_packet *packet
 	record.timebase_den = packet->timebase_den;
 
 	ok = fwrite(&record, 1, sizeof(record), segment->file) == sizeof(record);
-	if (ok && packet->size)
+	if (ok && packet->size) {
 		ok = fwrite(packet->data, 1, packet->size, segment->file) == packet->size;
+	}
 
 	if (!ok) {
 		int write_errno = errno;
 
 		pthread_mutex_lock(&disk->mutex);
-		set_error_locked(disk,
-				 write_errno == ENOSPC ? REPLAY_DISK_ERROR_NO_SPACE : REPLAY_DISK_ERROR_IO,
+		set_error_locked(disk, write_errno == ENOSPC ? REPLAY_DISK_ERROR_NO_SPACE : REPLAY_DISK_ERROR_IO,
 				 "could not write replay buffer segment: %s", strerror(write_errno));
 		pthread_mutex_unlock(&disk->mutex);
 		return false;
 	}
 
 	pthread_mutex_lock(&disk->mutex);
-	if (segment->size == 0)
+	if (segment->size == 0) {
 		segment->start_dts_usec = packet->dts_usec;
+	}
 	segment->size += (int64_t)record_size;
 	segment->end_dts_usec = packet->dts_usec;
 
@@ -533,8 +553,9 @@ static bool write_record(struct replay_disk *disk, struct encoder_packet *packet
 		pthread_mutex_lock(&disk->mutex);
 		if (disk->pending_save && seq >= disk->pending_save->target_seq) {
 			struct replay_disk_save *save = disk->pending_save;
-			if (!capture_save_locked(disk, save, packet->dts_usec))
+			if (!capture_save_locked(disk, save, packet->dts_usec)) {
 				disk->pending_save = NULL;
+			}
 		}
 		pthread_mutex_unlock(&disk->mutex);
 	}
@@ -550,16 +571,18 @@ static void *writer_thread(void *data)
 		struct replay_disk_item item;
 
 		pthread_mutex_lock(&disk->mutex);
-		while (!disk->stopping && disk->error == REPLAY_DISK_OK && disk->queue.size == 0)
+		while (!disk->stopping && disk->error == REPLAY_DISK_OK && disk->queue.size == 0) {
 			pthread_cond_wait(&disk->cond, &disk->mutex);
+		}
 
 		if (disk->stopping || disk->error != REPLAY_DISK_OK) {
 			if (disk->pending_save) {
 				struct replay_disk_save *save = disk->pending_save;
-				if (disk->stopping)
+				if (disk->stopping) {
 					save->cancelled = true;
-				else
+				} else {
 					fail_save_locked(save, disk->error, "%s", disk->error_detail);
+				}
 				disk->pending_save = NULL;
 			}
 			pthread_cond_broadcast(&disk->cond);
@@ -577,8 +600,9 @@ static void *writer_thread(void *data)
 
 		if (!ok) {
 			pthread_mutex_lock(&disk->mutex);
-			if (disk->pending_save)
+			if (disk->pending_save) {
 				fail_save_locked(disk->pending_save, disk->error, "%s", disk->error_detail);
+			}
 			disk->pending_save = NULL;
 			pthread_cond_broadcast(&disk->cond);
 			pthread_mutex_unlock(&disk->mutex);
@@ -597,11 +621,11 @@ static void destroy_session_dir(const char *path)
 		struct os_dirent *entry;
 
 		while ((entry = os_readdir(dir)) != NULL) {
-			if (entry->directory)
+			if (entry->directory) {
 				continue;
+			}
 
-			if (strncmp(entry->d_name, "segment-", 8) == 0 ||
-			    strcmp(entry->d_name, "session.lock") == 0) {
+			if (strncmp(entry->d_name, "segment-", 8) == 0 || strcmp(entry->d_name, "session.lock") == 0) {
 				struct dstr file_path = {0};
 				dstr_printf(&file_path, "%s/%s", path, entry->d_name);
 				os_unlink(file_path.array);
@@ -619,8 +643,9 @@ static void cleanup_stale_sessions(const char *directory)
 	os_dir_t *dir = os_opendir(directory);
 	time_t now = time(NULL);
 
-	if (!dir)
+	if (!dir) {
 		return;
+	}
 
 	struct os_dirent *entry;
 	while ((entry = os_readdir(dir)) != NULL) {
@@ -628,14 +653,16 @@ static void cleanup_stale_sessions(const char *directory)
 		struct dstr lock_path = {0};
 		struct stat st;
 
-		if (!entry->directory || strncmp(entry->d_name, "obs-replay-buffer-", 18) != 0)
+		if (!entry->directory || strncmp(entry->d_name, "obs-replay-buffer-", 18) != 0) {
 			continue;
+		}
 
 		dstr_printf(&session_path, "%s/%s", directory, entry->d_name);
 		dstr_printf(&lock_path, "%s/session.lock", session_path.array);
 
-		if (os_stat(lock_path.array, &st) == 0 && now - st.st_mtime > REPLAY_DISK_STALE_SECONDS)
+		if (os_stat(lock_path.array, &st) == 0 && now - st.st_mtime > REPLAY_DISK_STALE_SECONDS) {
 			destroy_session_dir(session_path.array);
+		}
 
 		dstr_free(&lock_path);
 		dstr_free(&session_path);
@@ -656,8 +683,9 @@ static void free_queue_locked(struct replay_disk *disk)
 
 void replay_disk_destroy(struct replay_disk *disk)
 {
-	if (!disk)
+	if (!disk) {
 		return;
+	}
 
 	pthread_mutex_lock(&disk->mutex);
 	disk->stopping = true;
@@ -671,8 +699,9 @@ void replay_disk_destroy(struct replay_disk *disk)
 
 	pthread_mutex_lock(&disk->mutex);
 	free_queue_locked(disk);
-	for (size_t i = 0; i < disk->segments.num; i++)
+	for (size_t i = 0; i < disk->segments.num; i++) {
 		destroy_segment_locked(disk, disk->segments.array[i]);
+	}
 	da_free(disk->segments);
 	da_free(disk->keyframes);
 	if (disk->lock_file) {
@@ -681,10 +710,12 @@ void replay_disk_destroy(struct replay_disk *disk)
 	}
 	pthread_mutex_unlock(&disk->mutex);
 
-	if (disk->lock_path.array)
+	if (disk->lock_path.array) {
 		os_unlink(disk->lock_path.array);
-	if (disk->session_dir.array)
+	}
+	if (disk->session_dir.array) {
 		destroy_session_dir(disk->session_dir.array);
+	}
 
 	pthread_cond_destroy(&disk->cond);
 	pthread_mutex_destroy(&disk->mutex);
@@ -701,12 +732,14 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 	struct dstr root = {0};
 	bool created = false;
 
-	if (error_detail)
+	if (error_detail) {
 		*error_detail = NULL;
+	}
 
 	if (!directory || !*directory) {
-		if (error_detail)
+		if (error_detail) {
 			*error_detail = bstrdup("the selected buffer folder is empty");
+		}
 		return NULL;
 	}
 
@@ -724,18 +757,21 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 	 */
 	if (max_time_usec > 0) {
 		disk->segment_duration_usec = max_time_usec / 4;
-		if (disk->segment_duration_usec < 2 * 1000000LL)
+		if (disk->segment_duration_usec < 2 * 1000000LL) {
 			disk->segment_duration_usec = 2 * 1000000LL;
-		if (disk->segment_duration_usec > 60 * 1000000LL)
+		}
+		if (disk->segment_duration_usec > 60 * 1000000LL) {
 			disk->segment_duration_usec = 60 * 1000000LL;
+		}
 	} else {
 		disk->segment_duration_usec = 60 * 1000000LL;
 	}
 
 	dstr_copy(&root, directory);
 	dstr_replace(&root, "\\", "/");
-	while (dstr_end(&root) == '/' && root.len > 1)
+	while (dstr_end(&root) == '/' && root.len > 1) {
 		dstr_resize(&root, root.len - 1);
+	}
 	dstr_copy(&disk->directory, root.array);
 
 	cleanup_stale_sessions(disk->directory.array);
@@ -758,10 +794,12 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 	}
 
 	if (!created) {
-		if (disk->error == REPLAY_DISK_OK)
+		if (disk->error == REPLAY_DISK_OK) {
 			set_error(disk, REPLAY_DISK_ERROR_PATH, "could not create a unique buffer folder");
-		if (error_detail)
+		}
+		if (error_detail) {
 			*error_detail = bstrdup(disk->error_detail);
+		}
 		replay_disk_destroy(disk);
 		dstr_free(&root);
 		return NULL;
@@ -774,8 +812,8 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 		fflush(disk->lock_file);
 		disk->last_lock_update = time(NULL);
 	} else {
-		set_error(disk, REPLAY_DISK_ERROR_PATH, "could not create '%s': %s",
-			  disk->lock_path.array, strerror(errno));
+		set_error(disk, REPLAY_DISK_ERROR_PATH, "could not create '%s': %s", disk->lock_path.array,
+			  strerror(errno));
 	}
 
 	if (disk->error == REPLAY_DISK_OK) {
@@ -793,19 +831,22 @@ struct replay_disk *replay_disk_create(const char *directory, int64_t max_time_u
 		pthread_mutex_lock(&disk->mutex);
 		created = create_segment_locked(disk);
 		pthread_mutex_unlock(&disk->mutex);
-		if (!created)
+		if (!created) {
 			disk->error = REPLAY_DISK_ERROR_IO;
+		}
 	}
 
 	if (disk->error == REPLAY_DISK_OK) {
 		disk->writer_started = pthread_create(&disk->writer, NULL, writer_thread, disk) == 0;
-		if (!disk->writer_started)
+		if (!disk->writer_started) {
 			set_error(disk, REPLAY_DISK_ERROR_IO, "could not start the disk writer thread");
+		}
 	}
 
 	if (disk->error != REPLAY_DISK_OK) {
-		if (error_detail)
+		if (error_detail) {
 			*error_detail = bstrdup(disk->error_detail);
+		}
 		replay_disk_destroy(disk);
 		dstr_free(&root);
 		return NULL;
@@ -821,8 +862,9 @@ bool replay_disk_write(struct replay_disk *disk, const struct encoder_packet *pa
 	struct replay_disk_item item = {0};
 	bool ok = true;
 
-	if (!disk || !packet)
+	if (!disk || !packet) {
 		return false;
+	}
 
 	pthread_mutex_lock(&disk->mutex);
 	if (disk->error != REPLAY_DISK_OK || disk->stopping) {
@@ -855,12 +897,14 @@ struct replay_disk_save *replay_disk_write_and_save(struct replay_disk *disk, co
 	struct replay_disk_item item = {0};
 	struct replay_disk_save *save = NULL;
 
-	if (!disk || !packet)
+	if (!disk || !packet) {
 		return NULL;
+	}
 
 	pthread_mutex_lock(&disk->mutex);
-	if (disk->error != REPLAY_DISK_OK || disk->stopping || disk->pending_save)
+	if (disk->error != REPLAY_DISK_OK || disk->stopping || disk->pending_save) {
 		goto unlock;
+	}
 
 	if (disk->queue_bytes + packet->size > REPLAY_DISK_QUEUE_LIMIT) {
 		set_error_locked(disk, REPLAY_DISK_ERROR_QUEUE,
@@ -892,12 +936,14 @@ bool replay_disk_save_wait(struct replay_disk_save *save)
 {
 	bool ok;
 
-	if (!save)
+	if (!save) {
 		return false;
+	}
 
 	pthread_mutex_lock(&save->disk->mutex);
-	while (!save->ready && !save->failed && !save->cancelled)
+	while (!save->ready && !save->failed && !save->cancelled) {
 		pthread_cond_wait(&save->disk->cond, &save->disk->mutex);
+	}
 
 	ok = save->ready && !save->failed && !save->cancelled;
 	pthread_mutex_unlock(&save->disk->mutex);
@@ -911,8 +957,9 @@ bool replay_disk_save_read(struct replay_disk_save *save,
 	size_t buffer_size = 0;
 	size_t packets = 0;
 
-	if (!save || !save->ready || save->failed || save->cancelled || !callback)
+	if (!save || !save->ready || save->failed || save->cancelled || !callback) {
 		return false;
+	}
 
 	for (size_t i = 0; i < save->segments.num; i++) {
 		struct replay_disk_segment *segment = save->segments.array[i];
@@ -921,14 +968,13 @@ bool replay_disk_save_read(struct replay_disk_save *save,
 		FILE *file = os_fopen(segment->path.array, "rb");
 
 		if (!file) {
-			fail_save(save, REPLAY_DISK_ERROR_IO, "could not open segment '%s': %s",
-					 segment->path.array, strerror(errno));
+			fail_save(save, REPLAY_DISK_ERROR_IO, "could not open segment '%s': %s", segment->path.array,
+				  strerror(errno));
 			goto fail;
 		}
 
 		if (os_fseeki64(file, start, SEEK_SET) != 0) {
-			fail_save(save, REPLAY_DISK_ERROR_IO, "could not seek in segment '%s'",
-					 segment->path.array);
+			fail_save(save, REPLAY_DISK_ERROR_IO, "could not seek in segment '%s'", segment->path.array);
 			fclose(file);
 			goto fail;
 		}
@@ -944,21 +990,19 @@ bool replay_disk_save_read(struct replay_disk_save *save,
 			}
 
 			if (fread(&record, 1, sizeof(record), file) != sizeof(record)) {
-				fail_save(save, REPLAY_DISK_ERROR_IO, "truncated segment '%s'",
-						 segment->path.array);
+				fail_save(save, REPLAY_DISK_ERROR_IO, "truncated segment '%s'", segment->path.array);
 				fclose(file);
 				goto fail;
 			}
 
-			if (record.magic != REPLAY_DISK_RECORD_MAGIC ||
-			    record.version != REPLAY_DISK_RECORD_VERSION ||
+			if (record.magic != REPLAY_DISK_RECORD_MAGIC || record.version != REPLAY_DISK_RECORD_VERSION ||
 			    record.type > OBS_ENCODER_VIDEO ||
 			    (record.type == OBS_ENCODER_AUDIO && record.track_idx >= MAX_AUDIO_MIXES) ||
 			    (record.type == OBS_ENCODER_VIDEO && record.timebase_den <= 0) ||
 			    record.size > REPLAY_DISK_MAX_PACKET_BYTES ||
 			    position + (int64_t)sizeof(record) + (int64_t)record.size > end) {
 				fail_save(save, REPLAY_DISK_ERROR_IO, "invalid record in segment '%s'",
-						 segment->path.array);
+					  segment->path.array);
 				fclose(file);
 				goto fail;
 			}
@@ -970,7 +1014,7 @@ bool replay_disk_save_read(struct replay_disk_save *save,
 
 			if (record.size && fread(buffer, 1, record.size, file) != record.size) {
 				fail_save(save, REPLAY_DISK_ERROR_IO, "truncated packet in segment '%s'",
-						 segment->path.array);
+					  segment->path.array);
 				fclose(file);
 				goto fail;
 			}
@@ -1016,13 +1060,15 @@ fail:
 
 void replay_disk_save_cancel(struct replay_disk_save *save)
 {
-	if (!save)
+	if (!save) {
 		return;
+	}
 
 	pthread_mutex_lock(&save->disk->mutex);
 	save->cancelled = true;
-	if (save->disk->pending_save == save)
+	if (save->disk->pending_save == save) {
 		save->disk->pending_save = NULL;
+	}
 	pthread_cond_broadcast(&save->disk->cond);
 	pthread_mutex_unlock(&save->disk->mutex);
 }
@@ -1036,16 +1082,18 @@ void replay_disk_save_free(struct replay_disk_save *save)
 {
 	struct replay_disk *disk;
 
-	if (!save)
+	if (!save) {
 		return;
+	}
 
 	disk = save->disk;
 
 	pthread_mutex_lock(&disk->mutex);
 	for (size_t i = 0; i < save->segments.num; i++) {
 		struct replay_disk_segment *segment = save->segments.array[i];
-		if (segment->refs > 0)
+		if (segment->refs > 0) {
 			segment->refs--;
+		}
 	}
 	delete_expired_segments_locked(disk);
 	pthread_mutex_unlock(&disk->mutex);
@@ -1057,32 +1105,37 @@ void replay_disk_save_free(struct replay_disk_save *save)
 enum replay_disk_error replay_disk_get_error(struct replay_disk *disk, const char **detail)
 {
 	if (!disk) {
-		if (detail)
+		if (detail) {
 			*detail = "disk buffer is not available";
+		}
 		return REPLAY_DISK_ERROR_PATH;
 	}
 
-	if (detail)
+	if (detail) {
 		*detail = disk->error_detail;
+	}
 	return disk->error;
 }
 
 enum replay_disk_error replay_disk_save_error(const struct replay_disk_save *save, const char **detail)
 {
 	if (!save) {
-		if (detail)
+		if (detail) {
 			*detail = "save is not available";
+		}
 		return REPLAY_DISK_ERROR_IO;
 	}
 
-	if (detail)
+	if (detail) {
 		*detail = save->detail;
+	}
 	return save->error;
 }
 
 int64_t replay_disk_save_duration(const struct replay_disk_save *save)
 {
-	if (!save || save->end_dts_usec < save->start_dts_usec)
+	if (!save || save->end_dts_usec < save->start_dts_usec) {
 		return 0;
+	}
 	return save->end_dts_usec - save->start_dts_usec;
 }
