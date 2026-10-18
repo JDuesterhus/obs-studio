@@ -1,13 +1,58 @@
 > ⚠️ **Disclaimer:** This is vibecoded slop and may become unmaintained at any
 > time. Use it at your own risk. For important work, use official OBS Studio.
 
-# OBS Studio: Multiple Replay Buffer Durations and Disk-Backed Buffer
+# OBS Studio with Custom Replay Lengths and a Disk-Backed Replay Buffer
 
-This repository is a fork of [OBS Studio](https://github.com/obsproject/obs-studio)
-that adds **several Replay Buffer durations, each with its own hotkey**, and an
-optional **disk-backed Replay Buffer** that keeps the rolling buffer on an SSD
-or HDD instead of in RAM. It is meant to be used like normal OBS; there is no
-external plugin, helper application, or hand-edited configuration file.
+This is a normal OBS Studio build with two main additions. There is no plugin or
+separate program to install.
+
+The **Replay Buffer** continuously keeps the recent past ready. When something
+happens, you press a hotkey and OBS saves that recent footage as a clip. It is
+separate from normal recording.
+
+## 1. Save replays of different lengths
+
+OBS normally saves one fixed replay length. This fork lets you add as many
+lengths as you want — for example 30 seconds, 2 minutes, 10 minutes, or 1 hour —
+and give each one its own keyboard shortcut. A **Replay Buffer** dock can also
+show a save button for each length.
+
+## 2. Keep the replay buffer on a disk instead of in memory
+
+OBS normally keeps the rolling replay buffer in your computer's memory. This
+fork can keep it on an SSD or HDD instead. That makes long buffers possible
+without using lots of memory. **RAM mode is still the default.**
+
+## At a glance
+
+- **Save the last 30 seconds** with one hotkey.
+- **Save the last 2 minutes** with another hotkey.
+- **Add any other length** you need.
+- **Use memory or disk** for the rolling buffer.
+- **Everything else works like normal OBS.**
+
+**Download the latest build:**
+<https://github.com/JDuesterhus/obs-studio/releases/latest>
+
+## Quick start
+
+1. Download and extract the build for your system.
+2. Start OBS.
+3. Open **Settings > Output** and enable **Replay Buffer**.
+4. Under **Replay Buffer Durations**, add the lengths you want.
+5. Under **Replay Buffer Storage**, choose **RAM (default)** or **Disk**.
+   - For disk mode, choose a folder on an SSD or HDD.
+6. Click **Apply**.
+7. Open **Settings > Hotkeys** and assign a key to each replay length.
+8. Start the Replay Buffer and press a key to save that length.
+
+The normal **Save Replay** hotkey still saves the whole buffer.
+
+## About this fork
+
+This repository is a fork of [OBS Studio](https://github.com/obsproject/obs-studio).
+It is based on OBS Studio 33.x and is **not** an official OBS Project release;
+it is not affiliated with or endorsed by the OBS Project.
 
 The duration feature was requested by the OBS community:
 <https://ideas.obsproject.com/posts/263/multiple-replay-buffer-hotkeys-with-different-time-length>
@@ -15,12 +60,7 @@ The duration feature was requested by the OBS community:
 The disk-backed mode implements this request:
 <https://ideas.obsproject.com/posts/777/replay-buffer-to-an-ssd-hdd-instead-of-ram>
 
-This fork is based on OBS Studio 33.x. It is **not** an official OBS Project
-release and is not affiliated with or endorsed by the OBS Project.
-
-Downloads: <https://github.com/JDuesterhus/obs-studio/releases/latest>
-
-## What this fork adds
+## Detailed feature list
 
 - Any number of extra Replay Buffer durations (for example 30 seconds,
   2 minutes, 10 minutes, and 1 hour).
