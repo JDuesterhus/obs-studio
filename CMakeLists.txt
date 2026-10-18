@@ -18,6 +18,7 @@ include(helpers)
 option(ENABLE_FRONTEND "Enable building with UI (requires Qt)" ON)
 option(ENABLE_SCRIPTING "Enable scripting support" ON)
 option(ENABLE_HEVC "Enable HEVC encoders" ON)
+option(ENABLE_REPLAY_BUFFER_TESTS "Build replay buffer unit tests" OFF)
 
 add_subdirectory(libobs)
 if(OS_WINDOWS)
@@ -31,6 +32,11 @@ endif()
 add_subdirectory(plugins)
 
 add_subdirectory(test/test-input)
+
+if(ENABLE_REPLAY_BUFFER_TESTS)
+  enable_testing()
+  add_subdirectory(test/replay-buffer)
+endif()
 
 add_subdirectory(frontend)
 

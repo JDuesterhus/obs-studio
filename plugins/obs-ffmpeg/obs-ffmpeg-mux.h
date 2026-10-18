@@ -33,6 +33,8 @@ struct ffmpeg_muxer {
 
 	/* replay buffer */
 	int64_t save_ts;
+	/* Requested clip length in microseconds.  Zero saves the whole buffer. */
+	int64_t replay_duration_usec;
 	int keyframes;
 	obs_hotkey_id hotkey;
 	volatile bool muxing;

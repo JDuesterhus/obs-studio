@@ -236,6 +236,7 @@ SimpleOutput::SimpleOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 			stopReplayBuffer.Connect(signal, "stop", OBSStopReplayBuffer, this);
 			replayBufferStopping.Connect(signal, "stopping", OBSReplayBufferStopping, this);
 			replayBufferSaved.Connect(signal, "saved", OBSReplayBufferSaved, this);
+			replayBufferSaveFailed.Connect(signal, "save_failed", OBSReplayBufferSaveFailed, this);
 		}
 
 		const char *mux = "ffmpeg_muxer";
@@ -834,6 +835,7 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 	bool overwriteIfExists = config_get_bool(main->Config(), "Output", "OverwriteIfExists");
 	const char *rbPrefix = config_get_string(main->Config(), "SimpleOutput", "RecRBPrefix");
 	const char *rbSuffix = config_get_string(main->Config(), "SimpleOutput", "RecRBSuffix");
+	const char *rbExtraDurations = config_get_string(main->Config(), "SimpleOutput", "RecRBExtraDurations");
 	int rbTime = config_get_int(main->Config(), "SimpleOutput", "RecRBTime");
 	int rbSize = config_get_int(main->Config(), "SimpleOutput", "RecRBSize");
 	int tracks = config_get_int(main->Config(), "SimpleOutput", "RecTracks");
@@ -853,6 +855,7 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 		obs_data_set_bool(settings, "allow_spaces", !noSpace);
 		obs_data_set_int(settings, "max_time_sec", rbTime);
 		obs_data_set_int(settings, "max_size_mb", usingRecordingPreset ? rbSize : 0);
+		obs_data_set_string(settings, "extra_durations", rbExtraDurations ? rbExtraDurations : "");
 	} else {
 		f = GetFormatString(filenameFormat, nullptr, nullptr);
 		string strPath = GetRecordingFilename(path, ffmpegOutput ? "avi" : format, noSpace, overwriteIfExists,

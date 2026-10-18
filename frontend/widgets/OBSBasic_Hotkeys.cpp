@@ -221,6 +221,9 @@ void OBSBasic::CreateHotkeys()
 	saveReplayBufferHotkey = obs_hotkey_register_frontend("OBSBasic.SaveReplayBuffer", Str("Basic.Main.SaveReplay"),
 							      replayBufferCallback, this);
 
+	/* One optional hotkey per configured replay buffer duration. */
+	CreateReplayBufferDurationHotkeys();
+
 	bool hasSaveReplayHotkey = config_has_user_value(activeConfiguration, "Hotkeys", "OBSBasic.SaveReplayBuffer");
 	if (hasSaveReplayHotkey) {
 		LoadHotkey(saveReplayBufferHotkey, "OBSBasic.SaveReplayBuffer");
@@ -323,6 +326,10 @@ void OBSBasic::ClearHotkeys()
 	obs_hotkey_unregister(addChapterHotkey);
 	obs_hotkey_pair_unregister(replayBufHotkeys);
 	obs_hotkey_unregister(saveReplayBufferHotkey);
+	for (const ReplayBufferDurationHotkey &hotkey : replayBufferDurationHotkeys) {
+		obs_hotkey_unregister(hotkey.id);
+	}
+	replayBufferDurationHotkeys.clear();
 	obs_hotkey_pair_unregister(vcamHotkeys);
 	obs_hotkey_pair_unregister(togglePreviewHotkeys);
 	obs_hotkey_pair_unregister(contextBarHotkeys);

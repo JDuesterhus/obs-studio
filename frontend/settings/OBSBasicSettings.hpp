@@ -32,6 +32,7 @@ class Auth;
 class OBSBasic;
 class OBSHotkeyWidget;
 class OBSPropertiesView;
+class ReplayBufferDurationsWidget;
 struct FFmpegFormat;
 struct OBSTheme;
 
@@ -67,6 +68,7 @@ private:
 	bool a11yChanged = false;
 	bool appearanceChanged = false;
 	bool advancedChanged = false;
+	bool replayBufferDurationsChanged = false;
 	int pageIndex = 0;
 	bool loading = true;
 	bool forceAuthReload = false;
@@ -114,6 +116,11 @@ private:
 	OBSSignal hotkeyRegistered;
 	OBSSignal hotkeyUnregistered;
 
+	/* Additional replay buffer durations, shown in both output modes. */
+	ReplayBufferDurationsWidget *simpleRBDurations = nullptr;
+	ReplayBufferDurationsWidget *advRBDurations = nullptr;
+	void ReplayBufferDurationsChanged();
+
 	uint32_t outputCX = 0;
 	uint32_t outputCY = 0;
 
@@ -160,6 +167,7 @@ private:
 		a11yChanged = false;
 		advancedChanged = false;
 		appearanceChanged = false;
+		replayBufferDurationsChanged = false;
 		EnableApplyButton(false);
 	}
 

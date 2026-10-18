@@ -19,6 +19,7 @@
 #include "OBSBasicSettings.hpp"
 #include "OBSHotkeyLabel.hpp"
 #include "OBSHotkeyWidget.hpp"
+#include "ReplayBufferDurationsWidget.hpp"
 
 #include <components/Multiview.hpp>
 #include <components/OBSSourceLabel.hpp>
@@ -42,6 +43,7 @@
 #include <qt-wrappers.hpp>
 
 #include <QCompleter>
+#include <QSignalBlocker>
 #include <QStandardItemModel>
 
 #include <sstream>
@@ -348,6 +350,25 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
 	ui->setupUi(this);
+
+	/*
+	 * The duration editor is shared by simple and advanced output mode.
+	 * Adding it here instead of duplicating it in the .ui file keeps both
+	 * modes in sync and makes upstream merges of the generated UI simpler.
+	 */
+	simpleRBDurations = new ReplayBufferDurationsWidget(this);
+	ui->formLayout_24->addRow(simpleRBDurations);
+	advRBDurations = new ReplayBufferDurationsWidget(this);
+	ui->formLayout_30->addRow(advRBDurations);
+
+	connect(simpleRBDurations, &ReplayBufferDurationsWidget::Changed, this, [this]() {
+		ReplayBufferDurationsChanged();
+		SimpleReplayBufferChanged();
+	});
+	connect(advRBDurations, &ReplayBufferDurationsWidget::Changed, this, [this]() {
+		ReplayBufferDurationsChanged();
+		AdvReplayBufferChanged();
+	});
 
 	main->EnableOutputs(false);
 
@@ -1833,6 +1854,12 @@ void OBSBasicSettings::LoadSimpleOutputSettings()
 	ui->simpleReplayBuf->setChecked(replayBuf);
 	ui->simpleRBSecMax->setValue(rbTime);
 	ui->simpleRBMegsMax->setValue(rbSize);
+	const char *simpleDurationsConfig = config_get_string(main->Config(), "SimpleOutput", "RecRBExtraDurations");
+	simpleRBDurations->SetDurations(QString::fromUtf8(simpleDurationsConfig ? simpleDurationsConfig : ""));
+	if (simpleRBDurations->LongestDuration() > ui->simpleRBSecMax->value()) {
+		ui->simpleRBSecMax->setValue(simpleRBDurations->LongestDuration());
+		ui->simpleRBSecMax->setProperty("changed", true);
+	}
 
 	SimpleStreamingEncoderChanged();
 }
@@ -2634,6 +2661,12 @@ void OBSBasicSettings::LoadAdvancedSettings()
 	ui->advReplayBuf->setChecked(replayBuf);
 	ui->advRBSecMax->setValue(rbTime);
 	ui->advRBMegsMax->setValue(rbSize);
+	const char *advDurationsConfig = config_get_string(main->Config(), "AdvOut", "RecRBExtraDurations");
+	advRBDurations->SetDurations(QString::fromUtf8(advDurationsConfig ? advDurationsConfig : ""));
+	if (advRBDurations->LongestDuration() > ui->advRBSecMax->value()) {
+		ui->advRBSecMax->setValue(advRBDurations->LongestDuration());
+		ui->advRBSecMax->setProperty("changed", true);
+	}
 
 	ui->reconnectEnable->setChecked(reconnect);
 	ui->reconnectRetryDelay->setValue(retryDelay);
@@ -3462,6 +3495,15 @@ void OBSBasicSettings::SaveEncoder(QComboBox *combo, const char *section, const 
 
 void OBSBasicSettings::SaveOutputSettings()
 {
+	const char *previousMode = config_get_string(main->Config(), "Output", "Mode");
+	const char *previousSimpleDurationsConfig =
+		config_get_string(main->Config(), "SimpleOutput", "RecRBExtraDurations");
+	const char *previousAdvDurationsConfig = config_get_string(main->Config(), "AdvOut", "RecRBExtraDurations");
+	const QString previousSimpleDurations =
+		QString::fromUtf8(previousSimpleDurationsConfig ? previousSimpleDurationsConfig : "");
+	const QString previousAdvDurations =
+		QString::fromUtf8(previousAdvDurationsConfig ? previousAdvDurationsConfig : "");
+
 	config_set_string(main->Config(), "Output", "Mode", OutputModeFromIdx(ui->outputMode->currentIndex()));
 
 	QString encoder = ui->simpleOutStrEncoder->currentData().toString();
@@ -3597,6 +3639,16 @@ void OBSBasicSettings::SaveOutputSettings()
 	SaveCheckBox(ui->advReplayBuf, "AdvOut", "RecRB");
 	SaveSpinBox(ui->advRBSecMax, "AdvOut", "RecRBTime");
 	SaveSpinBox(ui->advRBMegsMax, "AdvOut", "RecRBSize");
+
+	const QString simpleDurations = simpleRBDurations->DurationsString();
+	const QString advDurations = advRBDurations->DurationsString();
+	config_set_string(main->Config(), "SimpleOutput", "RecRBExtraDurations", QT_TO_UTF8(simpleDurations));
+	config_set_string(main->Config(), "AdvOut", "RecRBExtraDurations", QT_TO_UTF8(advDurations));
+
+	const char *currentMode = config_get_string(main->Config(), "Output", "Mode");
+	replayBufferDurationsChanged = replayBufferDurationsChanged || (simpleDurations != previousSimpleDurations) ||
+				       (advDurations != previousAdvDurations) || !previousMode || !currentMode ||
+				       strcmp(previousMode, currentMode) != 0;
 
 	WriteJsonData(streamEncoderProps, "streamEncoder.json");
 	WriteJsonData(recordEncoderProps, "recordEncoder.json");
@@ -3771,6 +3823,10 @@ void OBSBasicSettings::SaveSettings()
 	}
 	if (hotkeysChanged) {
 		SaveHotkeySettings();
+	}
+	if (replayBufferDurationsChanged && main->RefreshReplayBufferDurationHotkeys()) {
+		/* The hotkey page may already be loaded with the old durations. */
+		ReloadHotkeys();
 	}
 	if (a11yChanged) {
 		SaveA11ySettings();
@@ -4294,6 +4350,14 @@ void OBSBasicSettings::OutputsChanged()
 		EnableApplyButton(true);
 
 		UpdateMultitrackVideo();
+	}
+}
+
+void OBSBasicSettings::ReplayBufferDurationsChanged()
+{
+	if (!loading) {
+		outputsChanged = true;
+		EnableApplyButton(true);
 	}
 }
 
@@ -5155,6 +5219,14 @@ void OBSBasicSettings::SimpleReplayBufferChanged()
 	int vbitrate = ui->simpleOutputVBitrate->value();
 	int seconds = ui->simpleRBSecMax->value();
 
+	const int longestDuration = simpleRBDurations->LongestDuration();
+	if (longestDuration > seconds) {
+		QSignalBlocker blocker(ui->simpleRBSecMax);
+		ui->simpleRBSecMax->setValue(longestDuration);
+		seconds = longestDuration;
+		ui->simpleRBSecMax->setProperty("changed", true);
+	}
+
 	// Set maximum to 75% of installed memory
 	uint64_t memTotal = os_get_sys_total_size();
 	int64_t memMaxMB = memTotal ? memTotal * 3 / 4 / 1024 / 1024 : 8192;
@@ -5249,6 +5321,14 @@ void OBSBasicSettings::AdvReplayBufferChanged()
 	}
 
 	int seconds = ui->advRBSecMax->value();
+
+	const int longestDuration = advRBDurations->LongestDuration();
+	if (longestDuration > seconds) {
+		QSignalBlocker blocker(ui->advRBSecMax);
+		ui->advRBSecMax->setValue(longestDuration);
+		seconds = longestDuration;
+		ui->advRBSecMax->setProperty("changed", true);
+	}
 
 	// Set maximum to 75% of installed memory
 	uint64_t memTotal = os_get_sys_total_size();

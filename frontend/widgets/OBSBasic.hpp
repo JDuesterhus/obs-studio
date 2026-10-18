@@ -44,6 +44,8 @@
 #include <QSystemTrayIcon>
 
 #include <deque>
+#include <string>
+#include <vector>
 
 extern volatile bool recording_paused;
 
@@ -1049,6 +1051,17 @@ private:
 	bool replayBufferStopping = false;
 	std::string lastReplay;
 
+	struct ReplayBufferDurationHotkey {
+		int seconds;
+		obs_hotkey_id id;
+		std::string name;
+	};
+
+	std::vector<ReplayBufferDurationHotkey> replayBufferDurationHotkeys;
+
+	std::vector<int> ConfiguredReplayBufferDurations() const;
+	void CreateReplayBufferDurationHotkeys();
+
 public slots:
 	void ShowReplayBufferPauseWarning();
 	void StartReplayBuffer();
@@ -1056,11 +1069,21 @@ public slots:
 
 	void ReplayBufferStart();
 	void ReplayBufferSave();
+	void ReplayBufferSaveDuration(int seconds);
 	void ReplayBufferSaved();
+	void ReplayBufferSaveFailed(const QString &reason);
 	void ReplayBufferStopping();
 	void ReplayBufferStop(int code);
 
 	bool ReplayBufferActive();
+
+public:
+	/*
+	 * Re-registers the per-duration hotkeys after the settings have saved.
+	 * Returns true when the configured duration list actually changed, so
+	 * the settings dialog can refresh its hotkey page.
+	 */
+	bool RefreshReplayBufferDurationHotkeys();
 
 private slots:
 	/* Replay Buffer action (start/stop) slot */

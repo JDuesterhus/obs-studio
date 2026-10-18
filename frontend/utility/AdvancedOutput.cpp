@@ -100,6 +100,7 @@ AdvancedOutput::AdvancedOutput(OBSBasic *main_) : BasicOutputHandler(main_)
 			stopReplayBuffer.Connect(signal, "stop", OBSStopReplayBuffer, this);
 			replayBufferStopping.Connect(signal, "stopping", OBSReplayBufferStopping, this);
 			replayBufferSaved.Connect(signal, "saved", OBSReplayBufferSaved, this);
+			replayBufferSaveFailed.Connect(signal, "save_failed", OBSReplayBufferSaveFailed, this);
 		}
 
 		const char *mux = "ffmpeg_muxer";
@@ -870,6 +871,7 @@ bool AdvancedOutput::StartReplayBuffer()
 	bool overwriteIfExists = false;
 	const char *rbPrefix;
 	const char *rbSuffix;
+	const char *rbExtraDurations;
 	int rbTime;
 	int rbSize;
 
@@ -896,6 +898,7 @@ bool AdvancedOutput::StartReplayBuffer()
 					  ffmpegRecording ? "FFFileNameWithoutSpace" : "RecFileNameWithoutSpace");
 		rbPrefix = config_get_string(main->Config(), "SimpleOutput", "RecRBPrefix");
 		rbSuffix = config_get_string(main->Config(), "SimpleOutput", "RecRBSuffix");
+		rbExtraDurations = config_get_string(main->Config(), "AdvOut", "RecRBExtraDurations");
 		rbTime = config_get_int(main->Config(), "AdvOut", "RecRBTime");
 		rbSize = config_get_int(main->Config(), "AdvOut", "RecRBSize");
 
@@ -910,6 +913,7 @@ bool AdvancedOutput::StartReplayBuffer()
 		obs_data_set_bool(settings, "allow_spaces", !noSpace);
 		obs_data_set_int(settings, "max_time_sec", rbTime);
 		obs_data_set_int(settings, "max_size_mb", usesBitrate ? 0 : rbSize);
+		obs_data_set_string(settings, "extra_durations", rbExtraDurations ? rbExtraDurations : "");
 
 		obs_output_update(replayBuffer, settings);
 	}

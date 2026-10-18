@@ -17,12 +17,15 @@
 #include "ffmpeg-mux/ffmpeg-mux.h"
 #include "obs-ffmpeg-mux.h"
 #include "obs-ffmpeg-formats.h"
+#include "replay-buffer-window.h"
 
 #ifdef _WIN32
 #include "util/windows/win-version.h"
 #endif
 
 #include <libavformat/avformat.h>
+
+#include <stdlib.h>
 
 #define do_log(level, format, ...) \
 	blog(level, "[ffmpeg muxer: '%s'] " format, obs_output_get_name(stream->output), ##__VA_ARGS__)
@@ -58,6 +61,7 @@ static inline void replay_buffer_clear(struct ffmpeg_muxer *stream)
 	stream->max_size = 0;
 	stream->max_time = 0;
 	stream->save_ts = 0;
+	stream->replay_duration_usec = 0;
 	stream->keyframes = 0;
 }
 
@@ -914,21 +918,49 @@ static const char *replay_buffer_getname(void *type)
 	return obs_module_text("ReplayBuffer");
 }
 
+static void request_replay_save(struct ffmpeg_muxer *stream, int64_t duration_usec)
+{
+	if (!os_atomic_load_bool(&stream->active))
+		return;
+
+	obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
+	if (vencoder && obs_encoder_paused(vencoder)) {
+		info("Could not save buffer because the encoder is paused");
+		return;
+	}
+
+	/*
+	 * Store the requested length *before* arming save_ts.  The encoder
+	 * thread consumes both values when the save point is reached.
+	 */
+	stream->replay_duration_usec = duration_usec;
+	stream->save_ts = os_gettime_ns() / 1000LL;
+}
+
 static void save_replay_proc(void *data, calldata_t *cd)
 {
-
 	UNUSED_PARAMETER(cd);
 	struct ffmpeg_muxer *stream = data;
 
-	if (os_atomic_load_bool(&stream->active)) {
-		obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
-		if (obs_encoder_paused(vencoder)) {
-			info("Could not save buffer because the encoder is paused");
-			return;
-		}
+	/*
+	 * Zero explicitly means "save the whole buffer".  Never leave a stale
+	 * duration from an earlier request here: doing so was the cause of the
+	 * unplayable first-clip bug in older replay buffer forks.
+	 */
+	request_replay_save(stream, 0);
+}
 
-		stream->save_ts = os_gettime_ns() / 1000LL;
+static void save_replay_duration_proc(void *data, calldata_t *cd)
+{
+	struct ffmpeg_muxer *stream = data;
+	int64_t seconds = calldata_int(cd, "seconds");
+
+	if (seconds <= 0) {
+		request_replay_save(stream, 0);
+		return;
 	}
+
+	request_replay_save(stream, seconds * 1000000LL);
 }
 
 static void get_last_replay(void *data, calldata_t *cd)
@@ -946,11 +978,13 @@ static void *replay_buffer_create(obs_data_t *settings, obs_output_t *output)
 
 	proc_handler_t *ph = obs_output_get_proc_handler(output);
 	proc_handler_add(ph, "void save()", save_replay_proc, stream);
+	proc_handler_add(ph, "void save_duration(int seconds)", save_replay_duration_proc, stream);
 	proc_handler_add(ph, "void get_last_replay(out string path)", get_last_replay, stream);
 
 	signal_handler_t *sh = obs_output_get_signal_handler(output);
 	signal_handler_add(sh, "void saved()");
 	signal_handler_add(sh, "void saving(ptr output)");
+	signal_handler_add(sh, "void save_failed(string reason)");
 
 	return stream;
 }
@@ -958,6 +992,46 @@ static void *replay_buffer_create(obs_data_t *settings, obs_output_t *output)
 static void replay_buffer_destroy(void *data)
 {
 	ffmpeg_mux_destroy(data);
+}
+
+/*
+ * Returns the longest duration in a comma separated list of seconds, in
+ * microseconds.  Invalid or non-positive entries are ignored so a malformed
+ * configuration can never make the replay buffer grow without bound.
+ */
+static int64_t replay_buffer_longest_duration(const char *durations)
+{
+	int64_t longest = 0;
+
+	if (!durations)
+		return 0;
+
+	while (*durations) {
+		char *end = NULL;
+
+		while (*durations == ',' || *durations == ' ' || *durations == '\t')
+			durations++;
+		if (!*durations)
+			break;
+
+		long seconds = strtol(durations, &end, 10);
+		if (end == durations) {
+			/* Skip the rest of an unparseable entry. */
+			while (*durations && *durations != ',')
+				durations++;
+			continue;
+		}
+
+		if (seconds > 0 && seconds <= 24 * 60 * 60) {
+			int64_t usec = (int64_t)seconds * 1000000LL;
+			if (usec > longest)
+				longest = usec;
+		}
+
+		durations = end;
+	}
+
+	return longest;
 }
 
 static bool replay_buffer_start(void *data)
@@ -972,11 +1046,22 @@ static bool replay_buffer_start(void *data)
 	obs_data_t *s = obs_output_get_settings(stream->output);
 	stream->max_time = obs_data_get_int(s, "max_time_sec") * 1000000LL;
 	stream->max_size = obs_data_get_int(s, "max_size_mb") * (1024 * 1024);
+
+	/*
+	 * Keep the buffer long enough for the longest configured duration even
+	 * if the old "maximum replay time" setting is shorter.  The settings UI
+	 * grows that value as well; doing it here keeps hand-edited configs and
+	 * older profiles correct.
+	 */
+	int64_t longest_duration = replay_buffer_longest_duration(obs_data_get_string(s, "extra_durations"));
+	if (longest_duration > stream->max_time)
+		stream->max_time = longest_duration;
 	obs_data_release(s);
 
 	os_atomic_set_bool(&stream->active, true);
 	os_atomic_set_bool(&stream->capturing, true);
 	stream->total_bytes = 0;
+	stream->replay_duration_usec = 0;
 	obs_output_begin_data_capture(stream->output, 0);
 
 	return true;
@@ -1076,6 +1161,7 @@ static void *replay_buffer_mux_thread(void *data)
 {
 	struct ffmpeg_muxer *stream = data;
 	bool error = false;
+	size_t released = 0;
 
 	start_pipe(stream, stream->path.array);
 
@@ -1093,23 +1179,29 @@ static void *replay_buffer_mux_thread(void *data)
 
 	for (size_t i = 0; i < stream->mux_packets.num; i++) {
 		struct encoder_packet *pkt = &stream->mux_packets.array[i];
-		if (!write_packet(stream, pkt)) {
+		bool written = write_packet(stream, pkt);
+
+		/* Release every packet exactly once, whether it was written or
+		 * not.  The old code could double-release packets when a write
+		 * failed and leaked them when the thread could not start. */
+		obs_encoder_packet_release(pkt);
+		released = i + 1;
+
+		if (!written) {
 			warn("Could not write packet for file '%s'", stream->path.array);
 			error = true;
-			goto error;
+			break;
 		}
-		obs_encoder_packet_release(pkt);
 	}
 
-	info("Wrote replay buffer to '%s'", stream->path.array);
+	if (!error)
+		info("Wrote replay buffer to '%s'", stream->path.array);
 
 error:
 	os_process_pipe_destroy(stream->pipe);
 	stream->pipe = NULL;
-	if (error) {
-		for (size_t i = 0; i < stream->mux_packets.num; i++)
-			obs_encoder_packet_release(&stream->mux_packets.array[i]);
-	}
+	for (size_t i = released; i < stream->mux_packets.num; i++)
+		obs_encoder_packet_release(&stream->mux_packets.array[i]);
 	da_free(stream->mux_packets);
 	os_atomic_set_bool(&stream->muxing, false);
 
@@ -1122,12 +1214,64 @@ error:
 	return NULL;
 }
 
+static void signal_replay_save_failed(struct ffmpeg_muxer *stream, const char *reason)
+{
+	calldata_t cd = {0};
+	calldata_set_string(&cd, "reason", reason);
+	signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
+	signal_handler_signal(sh, "save_failed", &cd);
+	calldata_free(&cd);
+}
+
+struct replay_buffer_scan_context {
+	struct ffmpeg_muxer *stream;
+};
+
+static void replay_buffer_scan_packet(void *data, size_t index, struct replay_buffer_window_packet *packet)
+{
+	struct replay_buffer_scan_context *ctx = data;
+	const size_t size = sizeof(struct encoder_packet);
+	struct encoder_packet *pkt = deque_data(&ctx->stream->packets, index * size);
+
+	packet->dts_usec = pkt->dts_usec;
+	packet->video = pkt->type == OBS_ENCODER_VIDEO;
+	packet->keyframe = pkt->keyframe;
+}
+
 static void replay_buffer_save(struct ffmpeg_muxer *stream)
 {
 	const size_t size = sizeof(struct encoder_packet);
 	size_t num_packets = stream->packets.size / size;
+	int64_t requested_duration = stream->replay_duration_usec;
 
-	da_reserve(stream->mux_packets, num_packets);
+	/* Consume the request so a later save cannot accidentally reuse it. */
+	stream->replay_duration_usec = 0;
+
+	if (!num_packets) {
+		warn("Cannot save replay buffer: no packets have been received yet");
+		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.NoPackets"));
+		return;
+	}
+
+	struct replay_buffer_scan_context scan = {stream};
+	struct replay_buffer_window window;
+	if (!replay_buffer_find_window(num_packets, replay_buffer_scan_packet, &scan, requested_duration,
+				       &window)) {
+		warn("Cannot save replay buffer yet: no video keyframe is available");
+		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.NoKeyframe"));
+		return;
+	}
+
+	if (requested_duration > 0) {
+		info("Saving %.2f seconds of replay buffer (requested %.2f seconds)",
+		     (double)(window.end_dts_usec - window.start_dts_usec) / 1000000.0,
+		     (double)requested_duration / 1000000.0);
+	} else {
+		info("Saving %.2f seconds of replay buffer",
+		     (double)(window.end_dts_usec - window.start_dts_usec) / 1000000.0);
+	}
+
+	da_reserve(stream->mux_packets, window.end - window.start);
 
 	/* ---------------------------- */
 	/* reorder packets */
@@ -1139,7 +1283,7 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 	int64_t audio_offsets[MAX_AUDIO_MIXES] = {0};
 	int64_t audio_dts_offsets[MAX_AUDIO_MIXES] = {0};
 
-	for (size_t i = 0; i < num_packets; i++) {
+	for (size_t i = window.start; i < window.end; i++) {
 		struct encoder_packet *pkt;
 		pkt = deque_data(&stream->packets, i * size);
 
@@ -1173,6 +1317,9 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 	stream->mux_thread_joinable = pthread_create(&stream->mux_thread, NULL, replay_buffer_mux_thread, stream) == 0;
 	if (!stream->mux_thread_joinable) {
 		warn("Failed to create muxer thread");
+		for (size_t i = 0; i < stream->mux_packets.num; i++)
+			obs_encoder_packet_release(&stream->mux_packets.array[i]);
+		da_free(stream->mux_packets);
 		os_atomic_set_bool(&stream->muxing, false);
 	}
 }
@@ -1245,6 +1392,7 @@ static void replay_buffer_defaults(obs_data_t *s)
 	obs_data_set_default_string(s, "format", "%CCYY-%MM-%DD %hh-%mm-%ss");
 	obs_data_set_default_string(s, "extension", "mp4");
 	obs_data_set_default_bool(s, "allow_spaces", true);
+	obs_data_set_default_string(s, "extra_durations", "");
 }
 
 struct obs_output_info replay_buffer = {
