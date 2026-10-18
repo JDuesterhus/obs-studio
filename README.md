@@ -7,8 +7,8 @@ This is a normal OBS Studio build with two main additions. There is no plugin or
 separate program to install.
 
 The **Replay Buffer** continuously keeps the recent past ready. When something
-happens, you press a hotkey and OBS saves that recent footage as a clip. It is
-separate from normal recording.
+happens, you press a keyboard shortcut (a "hotkey") and OBS saves that recent
+footage as a clip. It is separate from normal recording.
 
 ## 1. Save replays of different lengths
 
