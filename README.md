@@ -21,7 +21,7 @@ show a save button for each length.
 
 OBS normally keeps the rolling replay buffer in your computer's memory. This
 fork can keep it on an SSD or HDD instead. That makes long buffers possible
-without using lots of memory. **RAM mode is still the default.**
+without using lots of memory. **Memory (RAM) mode is still the default.**
 
 ## At a glance
 
