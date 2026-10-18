@@ -78,8 +78,10 @@ existing OBS replay buffer options. Start it again after applying.
 
 A clip may be slightly longer than requested because it starts at the nearest
 keyframe at or before the requested start point. The extra time is at most one
-keyframe interval (typically 2 seconds). This is intentional: cutting inside a
-GOP would produce a clip whose first frames cannot be decoded.
+keyframe interval. A two-second keyframe interval therefore adds at most about
+two seconds; a longer interval (OBS's simple output can default to several
+seconds) adds more pre-roll. This is intentional: cutting inside a GOP would
+produce a clip whose first frames cannot be decoded.
 
 If the buffer has not received a video keyframe yet (usually only for a fraction
 of a second after starting), OBS shows a status-bar warning instead of writing
