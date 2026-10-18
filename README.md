@@ -85,7 +85,9 @@ produce a clip whose first frames cannot be decoded.
 
 If the buffer has not received a video keyframe yet (usually only for a fraction
 of a second after starting), OBS shows a status-bar warning instead of writing
-an empty or corrupt file.
+an empty or corrupt file. If muxing itself fails (for example the helper process
+cannot start or the disk is full), the partial file is deleted and the failure
+is reported in the status bar.
 
 ## Windows installation
 
@@ -155,6 +157,8 @@ compiled:
 | Add/remove durations through the Settings UI, then apply | Passed |
 | Hotkey list updates after applying new durations | Passed |
 | Hotkey bindings survive an OBS restart | Passed |
+| Legacy profile with no extra durations configured | Passed |
+| Mux-helper failure (helper removed) | Passed: warning shown, no partial file left |
 | Unit test for keyframe window selection | Passed |
 
 Example measurements from the integration runs:
