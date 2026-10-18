@@ -186,9 +186,11 @@ within one keyframe interval above it.
 If the buffer has not received a video keyframe yet (usually only for a fraction
 of a second after starting), OBS shows a status-bar warning instead of writing
 an empty or corrupt file. If muxing itself fails (for example the helper process
-cannot start or the disk is full), the partial file is deleted and the failure
-is reported in the status bar. Existing replay files are never overwritten; a
-colliding filename gets OBS's usual ` (2)` suffix.
+cannot start or the disk is full), the temporary file is deleted and the
+failure is reported in the status bar. A save is written to a `.part` file
+first and renamed to its final name only after the muxer finishes, so an
+interrupted save cannot look like a complete clip. Existing replay files are
+never overwritten; a colliding filename gets OBS's usual ` (2)` suffix.
 
 ## Replay Buffer dock
 
@@ -383,9 +385,10 @@ Known limitations and not tested yet:
   not impose a separate user-configurable size cap. Choose a duration and drive
   that fit your free space. The UI estimates the requirement and warns when
   space is tight.
-- If OBS itself crashes while a save is being muxed, the muxer's partial output
-  file can remain. A normal stop joins the save thread before exiting and does
-  not leave a partial replay file, and a failed mux deletes its own file.
+- If OBS itself crashes while a save is being muxed, a temporary `.part` file
+  can remain. It is not a normal clip and can be deleted manually. A normal
+  stop joins the save thread before exiting, and a failed mux deletes its
+  temporary file.
 - Code signing / SmartScreen reputation for the released ZIP.
 - The new storage strings are translated to German; other locales fall back to
   English until native speakers review them. Existing duration strings keep

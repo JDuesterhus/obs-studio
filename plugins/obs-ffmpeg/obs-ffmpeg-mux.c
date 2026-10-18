@@ -630,6 +630,21 @@ static void generate_filename(struct ffmpeg_muxer *stream, struct dstr *dst, boo
 	obs_data_release(settings);
 }
 
+static void make_atomic_temp_path(const char *path, struct dstr *temp)
+{
+	const char *slash = strrchr(path, '/');
+	const char *ext = strrchr(path, '.');
+
+	if (ext && (!slash || ext > slash)) {
+		dstr_ncopy(temp, path, (size_t)(ext - path));
+		dstr_cat(temp, ".part");
+		dstr_cat(temp, ext);
+	} else {
+		dstr_copy(temp, path);
+		dstr_cat(temp, ".part");
+	}
+}
+
 bool write_packet(struct ffmpeg_muxer *stream, struct encoder_packet *packet)
 {
 	bool is_video = packet->type == OBS_ENCODER_VIDEO;
@@ -1222,10 +1237,16 @@ static void signal_replay_save_failed(struct ffmpeg_muxer *stream, const char *r
 static void *replay_buffer_mux_thread(void *data)
 {
 	struct ffmpeg_muxer *stream = data;
+	struct dstr final_path = {0};
+	struct dstr temp_path = {0};
 	bool error = false;
 	size_t released = 0;
 
-	start_pipe(stream, stream->path.array);
+	dstr_copy(&final_path, stream->path.array);
+	make_atomic_temp_path(final_path.array, &temp_path);
+	os_unlink(temp_path.array);
+
+	start_pipe(stream, temp_path.array);
 
 	if (!stream->pipe) {
 		warn("Failed to create process pipe");
@@ -1234,7 +1255,7 @@ static void *replay_buffer_mux_thread(void *data)
 	}
 
 	if (!send_headers(stream)) {
-		warn("Could not write headers for file '%s'", stream->path.array);
+		warn("Could not write headers for file '%s'", temp_path.array);
 		error = true;
 		goto error;
 	}
@@ -1250,14 +1271,11 @@ static void *replay_buffer_mux_thread(void *data)
 		released = i + 1;
 
 		if (!written) {
-			warn("Could not write packet for file '%s'", stream->path.array);
+			warn("Could not write packet for file '%s'", temp_path.array);
 			error = true;
 			break;
 		}
 	}
-
-	if (!error)
-		info("Wrote replay buffer to '%s'", stream->path.array);
 
 error:
 	os_process_pipe_destroy(stream->pipe);
@@ -1265,21 +1283,31 @@ error:
 	for (size_t i = released; i < stream->mux_packets.num; i++)
 		obs_encoder_packet_release(&stream->mux_packets.array[i]);
 	da_free(stream->mux_packets);
+
+	if (!error && os_rename(temp_path.array, final_path.array) != 0)
+		error = true;
+
+	if (!error)
+		dstr_copy(&stream->path, final_path.array);
+
 	os_atomic_set_bool(&stream->muxing, false);
 
 	if (error) {
 		/* A file whose headers or packets could not be written is not a
-		 * valid clip.  Remove the partial file instead of leaving a tiny
-		 * unplayable artifact behind. */
-		if (stream->path.array && *stream->path.array)
-			os_unlink(stream->path.array);
+		 * valid clip.  Remove the temporary file instead of leaving a
+		 * partial artifact or a misleading final-name file. */
+		os_unlink(temp_path.array);
+		dstr_free(&stream->path);
 		signal_replay_save_failed(stream, obs_module_text("ReplayBuffer.WriteFailed"));
 	} else {
+		info("Wrote replay buffer to '%s'", stream->path.array);
 		calldata_t cd = {0};
 		signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
 		signal_handler_signal(sh, "saved", &cd);
 	}
 
+	dstr_free(&temp_path);
+	dstr_free(&final_path);
 	return NULL;
 }
 
@@ -1341,9 +1369,11 @@ static void *replay_buffer_disk_mux_thread(void *data)
 	struct ffmpeg_muxer *stream = data;
 	struct replay_disk_save *save = stream->disk_save;
 	struct replay_disk_mux_context ctx = {.stream = stream};
+	struct dstr final_path = {0};
+	struct dstr temp_path = {0};
 	bool error = false;
 	bool wrote = false;
-	bool have_path = false;
+	bool have_temp = false;
 	const char *reason = NULL;
 
 	if (!replay_disk_save_wait(save)) {
@@ -1363,9 +1393,13 @@ static void *replay_buffer_disk_mux_thread(void *data)
 	info("Saving %.2f seconds from the disk replay buffer", (double)replay_disk_save_duration(save) / 1000000.0);
 
 	generate_filename(stream, &stream->path, false);
-	have_path = true;
 
-	start_pipe(stream, stream->path.array);
+	dstr_copy(&final_path, stream->path.array);
+	make_atomic_temp_path(final_path.array, &temp_path);
+	os_unlink(temp_path.array);
+	have_temp = true;
+
+	start_pipe(stream, temp_path.array);
 	if (!stream->pipe) {
 		warn("Failed to create process pipe");
 		reason = obs_module_text("ReplayBuffer.WriteFailed");
@@ -1374,7 +1408,7 @@ static void *replay_buffer_disk_mux_thread(void *data)
 	}
 
 	if (!send_headers(stream)) {
-		warn("Could not write headers for file '%s'", stream->path.array);
+		warn("Could not write headers for file '%s'", temp_path.array);
 		reason = obs_module_text("ReplayBuffer.WriteFailed");
 		error = true;
 		goto done;
@@ -1395,7 +1429,6 @@ static void *replay_buffer_disk_mux_thread(void *data)
 	}
 
 	wrote = true;
-	info("Wrote disk replay buffer to '%s'", stream->path.array);
 
 done:
 	if (stream->pipe) {
@@ -1403,21 +1436,32 @@ done:
 		stream->pipe = NULL;
 	}
 
+	if (!error && wrote && os_rename(temp_path.array, final_path.array) != 0)
+		error = true;
+
+	if (!error && wrote)
+		dstr_copy(&stream->path, final_path.array);
+
 	os_atomic_set_bool(&stream->muxing, false);
 
 	if (error) {
-		if (have_path && stream->path.array && *stream->path.array)
-			os_unlink(stream->path.array);
+		if (have_temp && temp_path.array)
+			os_unlink(temp_path.array);
+		dstr_free(&stream->path);
 		signal_replay_save_failed(stream, reason ? reason : obs_module_text("ReplayBuffer.WriteFailed"));
 	} else if (wrote) {
+		info("Wrote disk replay buffer to '%s'", stream->path.array);
 		calldata_t cd = {0};
 		signal_handler_t *sh = obs_output_get_signal_handler(stream->output);
 		signal_handler_signal(sh, "saved", &cd);
-	} else if (have_path && stream->path.array && *stream->path.array) {
-		/* Cancelled while reading an already-created partial file. */
-		os_unlink(stream->path.array);
+	} else if (have_temp && temp_path.array) {
+		/* Cancelled while reading an already-created temporary file. */
+		os_unlink(temp_path.array);
+		dstr_free(&stream->path);
 	}
 
+	dstr_free(&temp_path);
+	dstr_free(&final_path);
 	return NULL;
 }
 
