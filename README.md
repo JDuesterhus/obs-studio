@@ -92,11 +92,12 @@ an empty or corrupt file.
 2. Extract it to a folder of your choice. Do not run it from inside the ZIP.
 3. Run `bin\64bit\obs64.exe`.
 
-The build is a portable ZIP, not an installer, and it is not code-signed. Windows
-SmartScreen may warn about an unknown publisher; choose **More info > Run
-anyway** only if you trust the download. Windows 10 21H2 or newer is recommended.
-Your existing OBS profile can be imported, but this fork keeps its own portable
-configuration when run with a `portable_mode` file (as the CI package does not).
+The build is a ZIP archive, not an installer, and it is not code-signed.
+Windows SmartScreen may warn about an unknown publisher; choose **More info >
+Run anyway** only if you trust the download. Windows 10 21H2 or newer is
+recommended. It uses your normal OBS configuration folder
+(`%APPDATA%\obs-studio`) unless you place a `portable_mode` file next to
+`obs64.exe`.
 
 ## Building from source
 
