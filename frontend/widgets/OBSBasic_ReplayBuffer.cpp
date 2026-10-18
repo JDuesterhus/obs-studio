@@ -18,8 +18,10 @@
 ******************************************************************************/
 
 #include "OBSBasic.hpp"
+#include "ReplayBufferDock.hpp"
 
 #include <components/UIValidation.hpp>
+#include <docks/OBSDock.hpp>
 #include <utility/ReplayBufferDurations.hpp>
 
 #include <qt-wrappers.hpp>
@@ -73,6 +75,38 @@ std::vector<int> OBSBasic::ConfiguredReplayBufferDurations() const
 	const char *csv = config_get_string(activeConfiguration, section, "RecRBExtraDurations");
 
 	return ReplayBufferDurations::Parse(QString::fromUtf8(csv ? csv : ""));
+}
+
+std::vector<int> OBSBasic::GetReplayBufferDurations() const
+{
+	return ConfiguredReplayBufferDurations();
+}
+
+void OBSBasic::CreateReplayBufferDock()
+{
+	if (replayBufferDock)
+		return;
+
+	auto *dock = new OBSDock(this);
+	dock->setObjectName(QStringLiteral("replayBufferDock"));
+	dock->setWindowTitle(QTStr("ReplayBuffer"));
+
+	auto *widget = new ReplayBufferDock(this, dock);
+	dock->setWidget(widget);
+
+	AddDockWidget(dock, Qt::RightDockWidgetArea);
+	dock->setVisible(false);
+	dock->setFloating(true);
+	dock->resize(320, 300);
+
+	replayBufferDock = dock;
+	replayBufferDockWidget = widget;
+}
+
+void OBSBasic::RefreshReplayBufferDock()
+{
+	if (replayBufferDockWidget)
+		replayBufferDockWidget->RefreshDurations();
 }
 
 void OBSBasic::CreateReplayBufferDurationHotkeys()
@@ -129,6 +163,7 @@ bool OBSBasic::RefreshReplayBufferDurationHotkeys()
 	replayBufferDurationHotkeys.clear();
 
 	CreateReplayBufferDurationHotkeys();
+	RefreshReplayBufferDock();
 	return true;
 }
 

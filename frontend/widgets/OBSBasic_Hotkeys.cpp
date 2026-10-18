@@ -223,6 +223,7 @@ void OBSBasic::CreateHotkeys()
 
 	/* One optional hotkey per configured replay buffer duration. */
 	CreateReplayBufferDurationHotkeys();
+	RefreshReplayBufferDock();
 
 	bool hasSaveReplayHotkey = config_has_user_value(activeConfiguration, "Hotkeys", "OBSBasic.SaveReplayBuffer");
 	if (hasSaveReplayHotkey) {

@@ -55,6 +55,8 @@ target_sources(
     widgets/OBSMainWindow.hpp
     widgets/OBSProjector.cpp
     widgets/OBSProjector.hpp
+    widgets/ReplayBufferDock.cpp
+    widgets/ReplayBufferDock.hpp
     widgets/OBSQTDisplay.cpp
     widgets/OBSQTDisplay.hpp
     widgets/StatusBarWidget.cpp

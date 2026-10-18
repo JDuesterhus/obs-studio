@@ -1,0 +1,221 @@
+name: Fork Builds
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '33.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Replay Buffer Tests
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake --preset windows-ci-x64 `
+            -DENABLE_REPLAY_BUFFER_TESTS=ON `
+            -DENABLE_BROWSER=OFF `
+            -DENABLE_SCRIPTING=OFF
+
+      - name: Build and run tests
+        shell: pwsh
+        run: |
+          cmake --build --preset windows-x64 --config RelWithDebInfo --target test_replay_buffer_window
+          ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure -R test_replay_buffer_window
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-2025-vs2026
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build OBS Studio
+        uses: ./.github/actions/build-obs
+        env:
+          TWITCH_CLIENTID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_HASH: ${{ secrets.TWITCH_HASH }}
+          RESTREAM_CLIENTID: ${{ secrets.RESTREAM_CLIENTID }}
+          RESTREAM_HASH: ${{ secrets.RESTREAM_HASH }}
+          YOUTUBE_CLIENTID: ${{ secrets.YOUTUBE_CLIENTID }}
+          YOUTUBE_CLIENTID_HASH: ${{ secrets.YOUTUBE_CLIENTID_HASH }}
+          YOUTUBE_SECRET: ${{ secrets.YOUTUBE_SECRET }}
+          YOUTUBE_SECRET_HASH: ${{ secrets.YOUTUBE_SECRET_HASH }}
+          GPU_PRIORITY_VAL: ${{ secrets.GPU_PRIORITY_VAL }}
+        with:
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+
+      - name: Package OBS Studio
+        uses: ./.github/actions/package-obs
+        with:
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-studio-multi-replay-windows-${{ matrix.arch }}
+          path: build_${{ matrix.arch }}/obs-studio-*-windows-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build OBS Studio
+        uses: ./.github/actions/build-obs
+        env:
+          TWITCH_CLIENTID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_HASH: ${{ secrets.TWITCH_HASH }}
+          RESTREAM_CLIENTID: ${{ secrets.RESTREAM_CLIENTID }}
+          RESTREAM_HASH: ${{ secrets.RESTREAM_HASH }}
+          YOUTUBE_CLIENTID: ${{ secrets.YOUTUBE_CLIENTID }}
+          YOUTUBE_CLIENTID_HASH: ${{ secrets.YOUTUBE_CLIENTID_HASH }}
+          YOUTUBE_SECRET: ${{ secrets.YOUTUBE_SECRET }}
+          YOUTUBE_SECRET_HASH: ${{ secrets.YOUTUBE_SECRET_HASH }}
+        with:
+          target: x86_64
+          config: RelWithDebInfo
+
+      - name: Package OBS Studio
+        uses: ./.github/actions/package-obs
+        with:
+          target: x86_64
+          config: RelWithDebInfo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-studio-multi-replay-linux-x86_64
+          path: build_ubuntu/obs-studio-*-x86_64-ubuntu-gnu.tar.xz
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    defaults:
+      run:
+        shell: zsh --no-rcs --errexit --pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build OBS Studio
+        uses: ./.github/actions/build-obs
+        env:
+          TWITCH_CLIENTID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_HASH: ${{ secrets.TWITCH_HASH }}
+          RESTREAM_CLIENTID: ${{ secrets.RESTREAM_CLIENTID }}
+          RESTREAM_HASH: ${{ secrets.RESTREAM_HASH }}
+          YOUTUBE_CLIENTID: ${{ secrets.YOUTUBE_CLIENTID }}
+          YOUTUBE_CLIENTID_HASH: ${{ secrets.YOUTUBE_CLIENTID_HASH }}
+          YOUTUBE_SECRET: ${{ secrets.YOUTUBE_SECRET }}
+          YOUTUBE_SECRET_HASH: ${{ secrets.YOUTUBE_SECRET_HASH }}
+        with:
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+
+      - name: Package OBS Studio
+        uses: ./.github/actions/package-obs
+        with:
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-studio-multi-replay-macos-${{ matrix.arch }}
+          path: build_macos/obs-studio-*-macos-*.tar.xz
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: obs-studio-multi-replay-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+
+          ls -l release-assets
+          if ! compgen -G "release-assets/*" > /dev/null; then
+            echo "No release packages were produced." >&2
+            exit 1
+          fi
+
+          cat > release-notes.md <<'EOF'
+          OBS Studio multi-replay-buffer fork.
+
+          Assets:
+          - Windows x64 and ARM64 ZIPs (extract and run bin\64bit\obs64.exe)
+          - Linux x86_64 tar.xz (normal OBS install layout)
+          - macOS Apple Silicon and Intel tar.xz archives (OBS.app)
+
+          This fork adds several Replay Buffer durations with one hotkey each,
+          an optional Replay Buffer dock, accurate short-clip durations, and
+          keyframe-aligned saving without re-encoding.
+
+          See the repository README for setup, platform notes, and limitations.
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+            gh release edit "$tag" --notes-file release-notes.md
+          else
+            gh release create "$tag" release-assets/* \
+              --title "OBS Multi-Replay $tag" \
+              --notes-file release-notes.md
+          fi

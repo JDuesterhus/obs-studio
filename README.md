@@ -22,7 +22,13 @@ release and is not affiliated with or endorsed by the OBS Project.
   like every other OBS hotkey.
 - A duration editor directly in **Settings > Output**, in both Simple and
   Advanced output mode.
-- Hotkeys are stored per profile and survive OBS restarts.
+- An optional **Replay Buffer** dock with one save button per duration and a
+  full-buffer button. It is hidden by default and can be opened from
+  **View > Docks**.
+- Hotkeys and dock buttons are stored per profile and survive OBS restarts.
+- UI strings are translated into the major OBS languages using the existing
+  OBS terminology (for example German uses **Replaypuffer**, not a newly
+  invented term).
 - Existing Replay Buffer behavior is preserved: the normal **Save Replay**
   hotkey still saves the whole buffered clip.
 - Clips are cut from the in-memory encoded packet buffer and muxed directly.
@@ -93,13 +99,41 @@ cannot start or the disk is full), the partial file is deleted and the failure
 is reported in the status bar. Existing replay files are never overwritten; a
 colliding filename gets OBS's usual ` (2)` suffix.
 
+## Replay Buffer dock
+
+The fork adds a native OBS dock, hidden by default:
+
+1. Open **View > Docks > Replay Buffer**.
+2. While the Replay Buffer is running, click **Save N seconds** for any
+   configured duration, or **Save full buffer**.
+3. Close the dock like any other OBS dock; OBS remembers its position and
+   visibility.
+
+The dock mirrors **Settings > Output**. Adding or removing a duration updates
+the dock immediately after Apply. Buttons are disabled while the Replay Buffer
+is not running.
+
+## Versioning
+
+This fork follows the upstream OBS version it is based on and adds its own
+suffix. For example:
+
+```text
+33.0.0-rc2-multi.1
+```
+
+means "fork build 1 based on upstream OBS 33.0.0-rc2". It is **not** an
+official OBS 33.1.0 release. The Windows file version shows the numeric base
+(`33.0.0`), while the release/tag and About window show the full fork version.
+
 ## Windows installation
 
 The GitHub Actions workflow produces a **ZIP archive, not a setup `.exe`**. It
 is the same kind of ZIP that the normal OBS Windows build produces.
 
-1. Download the latest `obs-studio-*-windows-x64.zip` from the repository's
-   **Releases** page.
+1. Download the latest `obs-studio-*-windows-x64.zip` (or
+   `*-windows-arm64.zip` on Windows on ARM) from the repository's **Releases**
+   page.
 2. Extract it to a folder of your choice. Do not run it from inside the ZIP.
 3. Start `bin\64bit\obs64.exe`.
 
@@ -118,14 +152,34 @@ an empty file named `portable_mode` inside `bin\64bit` (next to `obs64.exe`);
 OBS then keeps its configuration in the `config` folder at the root of the
 extracted archive.
 
+### Linux and macOS builds
+
+The GitHub Actions workflow also produces:
+
+- `obs-studio-*-x86_64-ubuntu-gnu.tar.xz` for Ubuntu/Linux x86_64
+- `obs-studio-*-macos-apple.tar.xz` for Apple Silicon
+- `obs-studio-*-macos-intel.tar.xz` for Intel Macs
+
+The Linux archive contains the normal OBS install layout (`bin`, `lib`,
+`share`). Run `bin/obs` from the extracted directory; if your desktop does not
+find the bundled libraries, start it with
+`LD_LIBRARY_PATH="$PWD/lib" ./bin/obs`. The macOS archive contains `OBS.app`;
+it is unsigned, so right-click it and choose **Open** the first time.
+
+These non-Windows builds are produced by the same OBS CI scripts but have not
+been exercised as thoroughly as the Windows x64 build.
+
 ## Building from source
 
-Requirements:
+Requirements for the Windows build:
 
 - Windows 10/11 x64
 - Visual Studio 2022 or newer with the C++ desktop workload
 - CMake 3.28 or newer
 - Git, with submodules checked out
+
+The same CMake project also builds on Linux and macOS using OBS's normal
+platform prerequisites; those builds were not exercised locally.
 
 ```powershell
 git clone --recurse-submodules https://github.com/JDuesterhus/obs-studio.git
@@ -148,7 +202,8 @@ cmake --build build_x64 --config RelWithDebInfo --target test_replay_buffer_wind
 ctest --test-dir build_x64 -C RelWithDebInfo -R test_replay_buffer_window --output-on-failure
 ```
 
-The GitHub Actions workflow runs this test and builds the Windows x64 package.
+The GitHub Actions workflow runs this test and builds the Windows, Linux, and
+macOS packages.
 
 ## Verification performed
 
@@ -175,6 +230,9 @@ compiled:
 | Legacy profile with no extra durations configured | Passed |
 | Two saves with the same generated filename | Passed: distinct files, no overwrite |
 | Mux-helper failure (helper removed) | Passed: warning shown, no partial file left |
+| Replay Buffer dock hidden by default | Passed (not present until View > Docks) |
+| Dock duration and full-buffer buttons | Passed (real clips saved) |
+| German dock and settings terminology | Passed (Replaypuffer, no Wiedergabepuffer) |
 | Unit test for keyframe window selection | Passed |
 
 Example measurements from the integration runs:
@@ -191,10 +249,11 @@ Not tested yet:
 
 - Other audio codecs (Opus, PCM, FLAC) with the replay buffer.
 - Hardware encoders other than NVENC HEVC.
-- Linux and macOS builds. The changes are platform-independent, but only the
-  Windows build was compiled and exercised here.
+- Linux and macOS builds are produced by CI but were not exercised locally.
 - Pausing the buffer, very long (multi-hour) buffers, and disk-full conditions.
 - Code signing / SmartScreen reputation for the released ZIP.
+- New translations were written from the existing OBS terminology but not
+  reviewed by native speakers.
 
 ## Upstream maintenance
 
@@ -206,6 +265,7 @@ The feature is deliberately kept in a small number of places:
   pass configured durations to the replay output.
 - `frontend/widgets/OBSBasic_ReplayBuffer.cpp`, `OBSBasic_Hotkeys.cpp`:
   duration hotkeys and saving.
+- `frontend/widgets/ReplayBufferDock.*`: the optional quick-save dock.
 - `frontend/settings/ReplayBufferDurationsWidget.*`,
   `frontend/utility/ReplayBufferDurations.*`:
   settings UI and shared formatting/parsing.

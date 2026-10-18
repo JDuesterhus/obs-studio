@@ -23,6 +23,7 @@
 #include "ColorSelect.hpp"
 #include "OBSBasicControls.hpp"
 #include "OBSBasicStats.hpp"
+#include "ReplayBufferDock.hpp"
 #include "plugin-manager/PluginManager.hpp"
 
 #include <obs-module.h>
@@ -950,6 +951,7 @@ void OBSBasic::OBSInit()
 
 	ResetOutputs();
 	CreateHotkeys();
+	CreateReplayBufferDock();
 
 	InitPrimitives();
 

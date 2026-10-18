@@ -60,6 +60,7 @@ class OBSBasicTransform;
 class OBSLogViewer;
 class OBSMissingFiles;
 class OBSProjector;
+class ReplayBufferDock;
 class ScreenshotObj;
 class VolumeControl;
 #ifdef YOUTUBE_ENABLED
@@ -1059,8 +1060,12 @@ private:
 
 	std::vector<ReplayBufferDurationHotkey> replayBufferDurationHotkeys;
 
+	QPointer<OBSDock> replayBufferDock;
+	ReplayBufferDock *replayBufferDockWidget = nullptr;
+
 	std::vector<int> ConfiguredReplayBufferDurations() const;
 	void CreateReplayBufferDurationHotkeys();
+	void CreateReplayBufferDock();
 
 public slots:
 	void ShowReplayBufferPauseWarning();
@@ -1084,6 +1089,10 @@ public:
 	 * the settings dialog can refresh its hotkey page.
 	 */
 	bool RefreshReplayBufferDurationHotkeys();
+
+	/* Durations currently configured for the active output mode. */
+	std::vector<int> GetReplayBufferDurations() const;
+	void RefreshReplayBufferDock();
 
 private slots:
 	/* Replay Buffer action (start/stop) slot */
