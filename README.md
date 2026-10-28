@@ -51,8 +51,8 @@ The normal **Save Replay** hotkey still saves the whole buffer.
 ## About this fork
 
 This repository is a fork of [OBS Studio](https://github.com/obsproject/obs-studio).
-It is based on OBS Studio 33.x and is **not** an official OBS Project release;
-it is not affiliated with or endorsed by the OBS Project.
+It is based on OBS Studio **33.0.0 stable** and is **not** an official OBS
+Project release; it is not affiliated with or endorsed by the OBS Project.
 
 The duration feature was requested by the OBS community:
 <https://ideas.obsproject.com/posts/263/multiple-replay-buffer-hotkeys-with-different-time-length>
@@ -252,12 +252,13 @@ This fork follows the upstream OBS version it is based on and adds its own
 suffix. For example:
 
 ```text
-33.0.0-rc2-multi.4
+33.0.0-multi.1
 ```
 
-means "fork build 4 based on upstream OBS 33.0.0-rc2". It is **not** an
-official OBS 33.1.0 release. The Windows file version shows the numeric base
-(`33.0.0`), while the release/tag and About window show the full fork version.
+means "fork build 1 based on upstream OBS 33.0.0 stable". Earlier pre-release
+builds used names such as `33.0.0-rc2-multi.5`. It is **not** an official OBS
+33.1.0 release. The Windows file version shows the numeric base (`33.0.0`),
+while the release/tag and About window show the full fork version.
 
 ## Windows installation
 
@@ -287,7 +288,7 @@ extracted archive.
 
 ### Linux and macOS builds
 
-The GitHub Actions workflow also produces:
+When GitHub Actions is available, the workflow also produces:
 
 - `obs-studio-*-x86_64-ubuntu-gnu.tar.xz` for Ubuntu/Linux x86_64
 - `obs-studio-*-macos-apple.tar.xz` for Apple Silicon
@@ -300,14 +301,17 @@ find the bundled libraries, start it with
 it is unsigned, so right-click it and choose **Open** the first time.
 
 These non-Windows builds are produced by the same OBS CI scripts but have not
-been exercised as thoroughly as the Windows x64 build.
+been exercised as thoroughly as the Windows x64 build. The current
+33.0.0-multi.1 release contains the locally built Windows x64 ZIP only; see
+the limitations below.
 
 ## Building from source
 
 Requirements for the Windows build:
 
 - Windows 10/11 x64
-- Visual Studio 2022 or newer with the C++ desktop workload
+- Visual Studio 2022 or newer with the C++ desktop workload (upstream 33.0.0
+  recommends Visual Studio 2026 and Windows SDK 10.0.26100)
 - CMake 3.28 or newer
 - Git, with submodules checked out
 
@@ -343,8 +347,9 @@ deliberately tiny free-space reserve, a tiny write queue, and an injected
 runtime free-space value to test the "disk full at start", "storage too slow",
 and "disk becomes full while writing" guards.
 
-The GitHub Actions workflow runs these tests and builds the Windows, Linux, and
-macOS packages.
+The GitHub Actions workflow is configured to run these tests and build the
+Windows, Linux, and macOS packages. It cannot run while Actions is disabled for
+this fork; see the limitations below.
 
 ## Verification performed
 
@@ -375,6 +380,13 @@ compiled:
 | Replay Buffer dock hidden by default | Passed (not present until View > Docks) |
 | Dock duration and full-buffer buttons | Passed (real clips saved) |
 | German dock and settings terminology | Passed (Replaypuffer, no Wiedergabepuffer) |
+| Upstream OBS 33.0.0 stable integrated | Passed (merge commit; deps 2026-10-23, rtmp-services, obs-browser 2.27.4) |
+| Full Windows build with browser and scripting | Passed (CEF 150.0.7871.252) |
+| Browser source rendered in merged build | Passed (640x360 screenshot) |
+| RAM replay after the merge | Passed (5.0 s, 10.2 s, 22.2 s saves) |
+| Disk replay after the merge | Passed (5.0 s, 11.0 s, 22.0 s saves) |
+| Full-build disk replay with browser source in frame | Passed (browser frame visible in saved clip) |
+| All six merged-build MKV clips decode and seek | Passed (`ffmpeg -f null` plus mid-clip seek) |
 | Disk-backed buffer, real OBS session | Passed |
 | Disk mode: 10 s and 30 s hotkeys plus full save | Passed (keyframe-aligned clips) |
 | Disk mode: multi-segment save | Passed (10 s request from a 45 s buffer) |
@@ -423,8 +435,12 @@ Known limitations and not tested yet:
 - Other audio codecs (Opus, PCM, FLAC) and hardware encoders other than NVENC
   H.264/HEVC were not part of the recent replay tests.
 - Pausing the buffer and multi-hour sessions were not exercised in a live run.
-- Linux and macOS packages were built successfully in CI but were not run
-  locally on those operating systems.
+- GitHub Actions is currently disabled for this fork at the service level.
+  The repository permissions endpoint reports `enabled: true`, but every
+  workflow dispatch or push returns HTTP 422 "Actions has been disabled for
+  this repository". The 33.0.0-multi.1 Windows package was built and verified
+  locally. Linux and macOS packages for this baseline could not be produced
+  until GitHub restores Actions; earlier rc2 packages were built in CI.
 - Disk mode keeps as much footage as the configured duration needs; it does
   not impose a separate user-configurable size cap. Choose a duration and drive
   that fit your free space. The UI estimates the requirement and warns when
