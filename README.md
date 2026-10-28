@@ -288,7 +288,7 @@ extracted archive.
 
 ### Linux and macOS builds
 
-When GitHub Actions is available, the workflow also produces:
+The GitHub Actions workflow also produces:
 
 - `obs-studio-*-x86_64-ubuntu-gnu.tar.xz` for Ubuntu/Linux x86_64
 - `obs-studio-*-macos-apple.tar.xz` for Apple Silicon
@@ -301,9 +301,9 @@ find the bundled libraries, start it with
 it is unsigned, so right-click it and choose **Open** the first time.
 
 These non-Windows builds are produced by the same OBS CI scripts but have not
-been exercised as thoroughly as the Windows x64 build. The current
-33.0.0-multi.1 release contains the locally built Windows x64 ZIP only; see
-the limitations below.
+been exercised as thoroughly as the Windows x64 build. The 33.0.0-multi.1
+release was built by GitHub Actions run
+[40760317777](https://github.com/JDuesterhus/obs-studio/actions/runs/40760317777).
 
 ## Building from source
 
@@ -347,9 +347,10 @@ deliberately tiny free-space reserve, a tiny write queue, and an injected
 runtime free-space value to test the "disk full at start", "storage too slow",
 and "disk becomes full while writing" guards.
 
-The GitHub Actions workflow is configured to run these tests and build the
-Windows, Linux, and macOS packages. It cannot run while Actions is disabled for
-this fork; see the limitations below.
+The GitHub Actions workflow runs these tests and builds the Windows x64,
+Windows ARM64, Linux x86_64, macOS Apple Silicon, and macOS Intel packages. Run
+[40760317777](https://github.com/JDuesterhus/obs-studio/actions/runs/40760317777)
+passed all of them and published the 33.0.0-multi.1 release.
 
 ## Verification performed
 
@@ -381,6 +382,8 @@ compiled:
 | Dock duration and full-buffer buttons | Passed (real clips saved) |
 | German dock and settings terminology | Passed (Replaypuffer, no Wiedergabepuffer) |
 | Upstream OBS 33.0.0 stable integrated | Passed (merge commit; deps 2026-10-23, rtmp-services, obs-browser 2.27.4) |
+| GitHub Actions run 40760317777 | Passed: tests plus Windows x64/ARM64, Linux x86_64, macOS ARM64/Intel, release publish |
+| CI-built Windows x64 package | Downloaded, extracted, reported `OBS 33.0.0-multi.1` |
 | Full Windows build with browser and scripting | Passed (CEF 150.0.7871.252) |
 | Browser source rendered in merged build | Passed (640x360 screenshot) |
 | RAM replay after the merge | Passed (5.0 s, 10.2 s, 22.2 s saves) |
@@ -435,12 +438,9 @@ Known limitations and not tested yet:
 - Other audio codecs (Opus, PCM, FLAC) and hardware encoders other than NVENC
   H.264/HEVC were not part of the recent replay tests.
 - Pausing the buffer and multi-hour sessions were not exercised in a live run.
-- GitHub Actions is currently disabled for this fork at the service level.
-  The repository permissions endpoint reports `enabled: true`, but every
-  workflow dispatch or push returns HTTP 422 "Actions has been disabled for
-  this repository". The 33.0.0-multi.1 Windows package was built and verified
-  locally. Linux and macOS packages for this baseline could not be produced
-  until GitHub restores Actions; earlier rc2 packages were built in CI.
+- The Linux, macOS, and Windows ARM64 packages were built successfully in CI
+  but were not run locally. The CI-built Windows x64 package was extracted and
+  launched locally.
 - Disk mode keeps as much footage as the configured duration needs; it does
   not impose a separate user-configurable size cap. Choose a duration and drive
   that fit your free space. The UI estimates the requirement and warns when
